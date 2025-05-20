@@ -13,11 +13,13 @@ window.addEventListener('securitypolicyviolation', function(e) {
 // Fix for local development environment
 (function() {
   // Check if we're in a local development environment
-  const isLocalDev = window.location.href.includes('dev=true') || 
-    window.location.href.includes('localhost') || 
+  const isLocalDev = window.location.href.includes('localhost') || 
     window.location.hostname.includes('127.0.0.1');
   
-  if (isLocalDev) {
+  // Separate check for dev mode without enabling example domains
+  const isDevMode = window.location.href.includes('dev=true');
+  
+  if (isLocalDev || isDevMode) {
     console.log("Development environment detected - applying protocol fixes");
     
     // Fix AJAX requests to convert https://localhost to http://localhost
@@ -66,8 +68,8 @@ window.addEventListener('securitypolicyviolation', function(e) {
     window.__DEV_PARAMS__.app_title = appTitleParam;
   }
   
-  // Add dev mode status to window object
-  window.__DEV_MODE__ = isLocalDev || forceDevMode;
+  // Add dev mode status to window object 
+  window.__DEV_MODE__ = isLocalDev || isDevMode || forceDevMode;
   
   if (window.__DEV_MODE__) {
     console.log('Development mode active');
@@ -214,20 +216,21 @@ function runDiagnostics() {
 }
 
 // Fake client for local development testing with sample data
-function createFakeClient() {
-  console.log('Creating fake client for development testing');
-  
-  return {
-    iparams: {
-      get: function() {
-        console.log('Fake client: iparams.get called');
-        
-        return Promise.resolve({
-          api_url: window.__DEV_PARAMS__?.api_url || 'https://example.freshservice.com',
-          api_key: window.__DEV_PARAMS__?.api_key || 'dev-placeholder-key'
-        });
-      }
-    },
+    function createFakeClient() {
+      console.log('Creating fake client for development testing');
+      
+      return {
+        iparams: {
+          get: function() {
+            console.log('Fake client: iparams.get called');
+            
+            // Never use example domain, use empty string if no params provided
+            return Promise.resolve({
+              api_url: window.__DEV_PARAMS__?.api_url || '',
+              api_key: window.__DEV_PARAMS__?.api_key || ''
+            });
+          }
+        },
     db: {
       set: function(key, value) {
         console.log('Fake client: db.set called with key:', key);
@@ -313,31 +316,31 @@ function createFakeClient() {
           // Try to load from data storage
           return this.loadConfigFromStorage()
             .then(config => {
-              if (config) {
-                console.log('Using saved iparams from data storage');
-                return config;
-              }
-              
-              // Default config if nothing is found
-              const defaultConfig = {
-                api_url: 'example.freshservice.com',
-                api_key: 'dev-placeholder-key',
-                app_title: 'Change Management',
-                change_types: [
-                  "Standard Change",
-                  "Emergency Change",
-                  "Non-Standard Change"
-                ]
-              };
-              
-              return defaultConfig;
+                          if (config) {
+              console.log('Using saved iparams from data storage');
+              return config;
+            }
+            
+            // Default config if nothing is found - no example domains
+            const defaultConfig = {
+              api_url: '', // Empty string instead of example domain
+              api_key: '',
+              app_title: 'Change Management',
+              change_types: [
+                "Standard Change",
+                "Emergency Change",
+                "Non-Standard Change"
+              ]
+            };
+            
+            return defaultConfig;
             })
             .catch(err => {
               console.error('Error loading from data storage:', err);
-              // Return default config on error
+              // Return default config on error - no example domains
               return {
-                api_url: 'example.freshservice.com',
-                api_key: 'dev-placeholder-key',
+                api_url: '', // Empty string instead of example domain
+                api_key: '',
                 app_title: 'Change Management',
                 change_types: [
                   "Standard Change",
@@ -710,14 +713,18 @@ function createFakeClient() {
     window.app.initialized = true;
     window.app.client = client;
     
-    // Load API configuration
-    loadApiConfiguration(client);
-    
-    // Add event listeners
-    setupEventListeners();
-    
-    // Run diagnostics after a short delay
-    setTimeout(runDiagnostics, 2000);
+    // Clear any example domains from storage before loading config
+    clearExampleDomainsFromStorage(client)
+      .then(() => {
+        // Load API configuration
+        loadApiConfiguration(client);
+        
+        // Add event listeners
+        setupEventListeners();
+        
+        // Run diagnostics after a short delay
+        setTimeout(runDiagnostics, 2000);
+      });
   }
   
   // Show warning message but don't block the app
@@ -732,6 +739,198 @@ function createFakeClient() {
     if (container) {
       container.insertBefore(warningElement, container.firstChild);
     }
+    
+    return warningElement; // Return the element in case the caller needs it
+  }
+  
+  // Function to clear any example domains from storage before loading config
+  function clearExampleDomainsFromStorage(client) {
+    console.log('Checking for example domains in storage...');
+    
+    return new Promise((resolve) => {
+      // Check client.db storage for app_config
+      if (client && client.db) {
+        client.db.get('app_config')
+          .then(config => {
+            if (config && config.apiUrl && config.apiUrl.includes('example.freshservice.com')) {
+              console.warn('Found example domain in client.db, clearing it...');
+              
+              // Show warning to the user about the example domain
+              showWarning('Example domain detected in storage. Cleaning up configuration...');
+              
+              // Create a clean config without the example domain
+              const cleanConfig = {
+                ...config,
+                apiUrl: '' // Clear the example domain
+              };
+              
+              // Try to preserve the API key and other settings if they're valid
+              if (!config.apiKey || config.apiKey === 'dev-placeholder-key') {
+                cleanConfig.apiKey = ''; // Clear placeholder API key
+              }
+              
+              return client.db.set('app_config', cleanConfig)
+                .then(() => {
+                  console.log('Successfully cleared example domain from client.db');
+                  return true;
+                })
+                .catch(err => {
+                  console.error('Error clearing example domain from client.db:', err);
+                  return false;
+                });
+            } else {
+              console.log('No example domain found in client.db');
+              return false;
+            }
+          })
+          .catch(err => {
+            console.error('Error checking client.db for example domain:', err);
+            return false;
+          })
+          .finally(() => {
+            // Also check localStorage, which might be used as a fallback
+            try {
+              const localStorageData = localStorage.getItem('freshservice_change_management_iparams');
+              if (localStorageData) {
+                const localConfig = JSON.parse(localStorageData);
+                if (localConfig.api_url && localConfig.api_url.includes('example.freshservice.com')) {
+                  console.warn('Found example domain in localStorage, clearing it...');
+                  
+                  // Create a clean config without the example domain
+                  const cleanLocalConfig = {
+                    ...localConfig,
+                    api_url: '' // Clear the example domain
+                  };
+                  
+                  // Try to preserve the API key and other settings if they're valid
+                  if (!localConfig.api_key || localConfig.api_key === 'dev-placeholder-key') {
+                    cleanLocalConfig.api_key = ''; // Clear placeholder API key
+                  }
+                  
+                  localStorage.setItem('freshservice_change_management_iparams', JSON.stringify(cleanLocalConfig));
+                  console.log('Successfully cleared example domain from localStorage');
+                }
+              }
+            } catch (e) {
+              console.error('Error clearing example domain from localStorage:', e);
+            }
+            
+            // Add a reset button to the UI
+            addConfigResetButton(client);
+            
+            // Resolve the promise to continue initialization
+            resolve();
+          });
+      } else {
+        console.log('Client.db not available, skipping example domain check');
+        // Add a reset button to the UI even if client.db is not available
+        addConfigResetButton(client);
+        resolve();
+      }
+    });
+  }
+  
+  // Add a reset button to the UI to allow manual configuration reset
+  function addConfigResetButton(client) {
+    document.addEventListener('DOMContentLoaded', function() {
+      const container = document.querySelector('.container');
+      if (!container) return;
+      
+      // Check if reset button already exists
+      if (document.getElementById('resetConfigButton')) return;
+      
+      // Create a reset button
+      const resetButton = document.createElement('button');
+      resetButton.id = 'resetConfigButton';
+      resetButton.className = 'btn btn-sm btn-outline-danger mt-1 mb-3';
+      resetButton.innerHTML = '<i class="fas fa-sync-alt"></i> Reset Configuration';
+      resetButton.title = 'Clear all saved settings and reload';
+      resetButton.style.float = 'right';
+      
+      // Add click handler
+      resetButton.addEventListener('click', function() {
+        // Show confirmation dialog using DOM elements
+        const confirmDialog = document.createElement('div');
+        confirmDialog.className = 'modal fade show';
+        confirmDialog.style.display = 'block';
+        confirmDialog.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        confirmDialog.innerHTML = `
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Confirm Reset</h5>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+              </div>
+              <div class="modal-body">
+                <p>Are you sure you want to reset all configuration? This will clear all saved settings.</p>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmReset">Reset</button>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // Add to body
+        document.body.appendChild(confirmDialog);
+        
+        // Handle close button
+        const closeBtn = confirmDialog.querySelector('.close');
+        if (closeBtn) {
+          closeBtn.addEventListener('click', function() {
+            document.body.removeChild(confirmDialog);
+          });
+        }
+        
+        // Handle cancel button
+        const cancelBtn = confirmDialog.querySelector('.btn-secondary');
+        if (cancelBtn) {
+          cancelBtn.addEventListener('click', function() {
+            document.body.removeChild(confirmDialog);
+          });
+        }
+        
+        // Handle confirm button
+        const confirmBtn = document.getElementById('confirmReset');
+        if (confirmBtn) {
+          confirmBtn.addEventListener('click', function() {
+            // Close the dialog
+            document.body.removeChild(confirmDialog);
+            
+            // Clear data from client.db
+            if (client && client.db) {
+              client.db.set('app_config', {})
+                .then(() => console.log('Cleared app_config from client.db'))
+                .catch(err => console.error('Error clearing app_config from client.db:', err));
+            }
+            
+            // Clear data from localStorage
+            localStorage.removeItem('freshservice_change_management_iparams');
+            localStorage.removeItem('appConfig');
+            
+            // Show success message
+            const successMsg = document.createElement('div');
+            successMsg.className = 'alert alert-success';
+            successMsg.innerHTML = 'Configuration reset successfully. Reloading...';
+            container.insertBefore(successMsg, container.firstChild);
+            
+            // Reload the page after a short delay to apply changes
+            setTimeout(function() {
+              location.reload();
+            }, 1500);
+          });
+        }
+      });
+      
+      // Add to the DOM
+      const titleElement = document.getElementById('appTitle');
+      if (titleElement && titleElement.parentNode) {
+        titleElement.parentNode.appendChild(resetButton);
+      } else {
+        container.insertBefore(resetButton, container.firstChild);
+      }
+    });
   }
   
   function loadApiConfiguration(client) {
@@ -956,9 +1155,9 @@ function createFakeClient() {
       })
       .then(found => {
         if (!found) {
-          // Use defaults if nothing worked
-          console.warn('No valid configuration found, using defaults');
-          app.apiUrl = 'https://example.freshservice.com';
+          // Don't use example domain as default anymore
+          console.warn('No valid configuration found, prompting for configuration');
+          app.apiUrl = ''; // Empty string instead of example domain
           app.apiKey = '';
           app.appTitle = 'Change Management';
           app.changeTypes = [
@@ -967,7 +1166,110 @@ function createFakeClient() {
             "Non-Standard Change"
           ];
           
-          showWarning('No valid configuration found. Please reinstall the app with proper settings or add ?api_url=yourdomain.freshservice.com&api_key=your_api_key to the URL.');
+          // Show a more prominent configuration prompt
+          const configPrompt = `
+            <div class="alert alert-warning mt-2 mb-2">
+              <h4>Configuration Required</h4>
+              <p>Please configure your Freshservice domain and API key using one of the following methods:</p>
+              <ol>
+                <li>Add URL parameters: <code>?api_url=yourdomain.freshservice.com&api_key=your_api_key</code></li>
+                <li>Install the app properly through Freshservice Admin interface</li>
+              </ol>
+              <div class="input-group mt-3">
+                <div class="input-group-prepend">
+                  <span class="input-group-text">Domain</span>
+                </div>
+                <input type="text" id="configApiUrl" class="form-control" placeholder="yourdomain.freshservice.com">
+              </div>
+              <div class="input-group mt-2">
+                <div class="input-group-prepend">
+                  <span class="input-group-text">API Key</span>
+                </div>
+                <input type="text" id="configApiKey" class="form-control" placeholder="Your Freshservice API key">
+              </div>
+              <button id="saveConfigBtn" class="btn btn-primary mt-2">Save Configuration</button>
+            </div>
+          `;
+          
+          // Add to page
+          const container = document.querySelector('.container');
+          if (container) {
+            // Create element for the prompt
+            const promptElement = document.createElement('div');
+            promptElement.innerHTML = configPrompt;
+            container.insertBefore(promptElement, container.firstChild);
+            
+            // Add event listener to the save button
+            setTimeout(() => {
+              const saveBtn = document.getElementById('saveConfigBtn');
+              if (saveBtn) {
+                saveBtn.addEventListener('click', function() {
+                  const apiUrlInput = document.getElementById('configApiUrl');
+                  const apiKeyInput = document.getElementById('configApiKey');
+                  
+                  if (apiUrlInput && apiKeyInput) {
+                    const apiUrl = apiUrlInput.value.trim();
+                    const apiKey = apiKeyInput.value.trim();
+                    
+                    if (apiUrl && apiKey) {
+                      // Process API URL to ensure it has proper format
+                      let fullApiUrl = apiUrl;
+                      if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
+                        fullApiUrl = 'https://' + fullApiUrl;
+                      }
+                      
+                      // Update app configuration
+                      app.apiUrl = fullApiUrl;
+                      app.apiKey = apiKey;
+                      
+                      // Set up API endpoints
+                      app.endpoints = {
+                        users: `${app.apiUrl}/api/v2/agents`,
+                        requesters: `${app.apiUrl}/api/v2/requesters`,
+                        groups: `${app.apiUrl}/api/v2/groups`
+                      };
+                      
+                      // Save to storage
+                      saveConfigToStorage(client, {
+                        apiUrl: app.apiUrl,
+                        apiKey: app.apiKey,
+                        appTitle: app.appTitle,
+                        changeTypes: app.changeTypes
+                      });
+                      
+                      // Show success message
+                      const successMsg = document.createElement('div');
+                      successMsg.className = 'alert alert-success';
+                      successMsg.innerHTML = 'Configuration saved successfully. Reloading...';
+                      container.insertBefore(successMsg, container.firstChild);
+                      
+                      // Reload the page after a short delay
+                      setTimeout(function() {
+                        location.reload();
+                      }, 1500);
+                    } else {
+                      // Show error for missing fields
+                      const errorMsg = document.createElement('div');
+                      errorMsg.className = 'alert alert-danger mt-2';
+                      errorMsg.innerHTML = 'Please enter both domain and API key';
+                      
+                      // Remove any existing error messages
+                      const existingErrors = container.querySelectorAll('.alert-danger');
+                      existingErrors.forEach(el => {
+                        if (el.textContent.includes('Please enter both')) {
+                          el.remove();
+                        }
+                      });
+                      
+                      // Add the new error message
+                      container.insertBefore(errorMsg, promptElement.nextSibling);
+                    }
+                  }
+                });
+              }
+            }, 500);
+          }
+          
           updateAppTitle(app.appTitle);
         }
       });
