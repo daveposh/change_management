@@ -1412,6 +1412,9 @@ function runDiagnostics() {
           performSearch();
         }
       });
+      
+      // Add saved searches dropdown
+      addSavedSearchesDropdown(searchInput);
     } else {
       console.error('Search input not found in the DOM');
     }
@@ -1446,6 +1449,225 @@ function runDiagnostics() {
     }
     
     console.log('Event listeners setup complete');
+  }
+  
+  // Add saved searches dropdown next to search input
+  function addSavedSearchesDropdown(searchInput) {
+    // Create a parent container for search input and dropdown
+    const parentDiv = document.createElement('div');
+    parentDiv.className = 'input-group';
+    
+    // Insert parent div before search input
+    searchInput.parentNode.insertBefore(parentDiv, searchInput);
+    
+    // Move search input into parent div
+    parentDiv.appendChild(searchInput);
+    
+    // Create dropdown button
+    const dropdownButton = document.createElement('div');
+    dropdownButton.className = 'input-group-append';
+    dropdownButton.innerHTML = `
+      <button class="btn btn-outline-secondary dropdown-toggle" type="button" 
+              id="savedSearchesDropdown" data-toggle="dropdown" 
+              aria-haspopup="true" aria-expanded="false" title="Saved Searches">
+        <svg width="16" height="16" viewBox="0 0 16 16" class="bi bi-bookmark" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd" d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v13.5a.5.5 0 0 1-.777.416L8 13.101l-5.223 2.815A.5.5 0 0 1 2 15.5V2zm2-1a1 1 0 0 0-1 1v12.566l4.723-2.482a.5.5 0 0 1 .554 0L13 14.566V2a1 1 0 0 0-1-1H4z"/>
+        </svg>
+      </button>
+      <div class="dropdown-menu dropdown-menu-right" aria-labelledby="savedSearchesDropdown" id="savedSearchesMenu">
+        <!-- Saved searches will be added here -->
+        <div class="dropdown-item text-center text-muted small" id="noSavedSearchesMsg">No saved searches</div>
+        <div class="dropdown-divider"></div>
+        <div class="px-3 py-2">
+          <button class="btn btn-sm btn-outline-primary btn-block" id="saveCurrentSearchBtn">
+            Save Current Search
+          </button>
+        </div>
+      </div>
+    `;
+    
+    // Add dropdown to input group
+    parentDiv.appendChild(dropdownButton);
+    
+    // Load saved searches
+    loadSavedSearches();
+    
+    // Add event listener for save button
+    document.addEventListener('click', function(e) {
+      if (e.target && e.target.id === 'saveCurrentSearchBtn') {
+        saveCurrentSearch();
+      }
+    });
+  }
+  
+  // Load saved searches from localStorage
+  function loadSavedSearches() {
+    setTimeout(() => {
+      const savedSearchesMenu = document.getElementById('savedSearchesMenu');
+      const noSavedSearchesMsg = document.getElementById('noSavedSearchesMsg');
+      
+      if (!savedSearchesMenu) return;
+      
+      try {
+        // Get saved searches from localStorage
+        const savedSearches = JSON.parse(localStorage.getItem('freshservice_saved_searches') || '[]');
+        
+        // Remove existing search items (except the last two items - divider and save button)
+        const children = Array.from(savedSearchesMenu.children);
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+          if (child.classList.contains('saved-search-item')) {
+            savedSearchesMenu.removeChild(child);
+          }
+        }
+        
+        // Show or hide "no saved searches" message
+        if (savedSearches.length === 0) {
+          if (noSavedSearchesMsg) noSavedSearchesMsg.style.display = 'block';
+        } else {
+          if (noSavedSearchesMsg) noSavedSearchesMsg.style.display = 'none';
+          
+          // Add saved searches to dropdown
+          savedSearches.forEach((search, index) => {
+            const item = document.createElement('a');
+            item.className = 'dropdown-item saved-search-item';
+            item.href = '#';
+            item.setAttribute('data-search', search.query);
+            item.setAttribute('data-index', index);
+            
+            // Handle click on saved search
+            item.addEventListener('click', function(e) {
+              e.preventDefault();
+              const searchInput = document.getElementById('searchInput');
+              if (searchInput) {
+                searchInput.value = this.getAttribute('data-search');
+                
+                // Auto-execute the search
+                performSearch();
+              }
+            });
+            
+            // Add delete button for each search
+            item.innerHTML = `
+              <div class="d-flex justify-content-between align-items-center">
+                <span>${escapeHtml(search.query)}</span>
+                <button class="btn btn-sm btn-link text-danger p-0 ml-2 delete-saved-search" 
+                        title="Delete this saved search" data-index="${index}">
+                  <svg width="14" height="14" viewBox="0 0 16 16" class="bi bi-x" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path fill-rule="evenodd" d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                  </svg>
+                </button>
+              </div>
+            `;
+            
+            // Insert before the divider
+            const divider = savedSearchesMenu.querySelector('.dropdown-divider');
+            if (divider) {
+              savedSearchesMenu.insertBefore(item, divider);
+            } else {
+              savedSearchesMenu.appendChild(item);
+            }
+          });
+          
+          // Add event listeners for delete buttons
+          document.querySelectorAll('.delete-saved-search').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation(); // Prevent triggering parent click
+              
+              const index = parseInt(this.getAttribute('data-index'), 10);
+              deleteSavedSearch(index);
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error loading saved searches:', error);
+      }
+    }, 500); // Short delay to ensure DOM is ready
+  }
+  
+  // Save current search query
+  function saveCurrentSearch() {
+    const searchInput = document.getElementById('searchInput');
+    if (!searchInput || !searchInput.value.trim()) return;
+    
+    try {
+      // Get current query
+      const query = searchInput.value.trim();
+      
+      // Get current tab (users or requesters)
+      const activeTab = document.querySelector('.nav-link.active');
+      const searchType = activeTab && activeTab.id === 'users-tab' ? 'users' : 'requesters';
+      
+      // Get existing saved searches
+      const savedSearches = JSON.parse(localStorage.getItem('freshservice_saved_searches') || '[]');
+      
+      // Check if search already exists to avoid duplicates
+      const exists = savedSearches.some(item => item.query === query && item.type === searchType);
+      
+      if (!exists) {
+        // Add new search
+        savedSearches.push({
+          query,
+          type: searchType,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Sort by newest first
+        savedSearches.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // Keep only the 10 most recent searches
+        const trimmedSearches = savedSearches.slice(0, 10);
+        
+        // Save to localStorage
+        localStorage.setItem('freshservice_saved_searches', JSON.stringify(trimmedSearches));
+        
+        // Show success message
+        const notification = document.createElement('div');
+        notification.style.position = 'fixed';
+        notification.style.bottom = '20px';
+        notification.style.right = '20px';
+        notification.style.backgroundColor = '#28a745';
+        notification.style.color = 'white';
+        notification.style.padding = '10px 15px';
+        notification.style.borderRadius = '4px';
+        notification.style.zIndex = '9999';
+        notification.textContent = 'Search saved!';
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 2 seconds
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 2000);
+        
+        // Reload the dropdown
+        loadSavedSearches();
+      }
+    } catch (error) {
+      console.error('Error saving search:', error);
+    }
+  }
+  
+  // Delete a saved search by index
+  function deleteSavedSearch(index) {
+    try {
+      // Get existing saved searches
+      const savedSearches = JSON.parse(localStorage.getItem('freshservice_saved_searches') || '[]');
+      
+      // Remove the search at the specified index
+      if (index >= 0 && index < savedSearches.length) {
+        savedSearches.splice(index, 1);
+        
+        // Save updated list to localStorage
+        localStorage.setItem('freshservice_saved_searches', JSON.stringify(savedSearches));
+        
+        // Reload the dropdown
+        loadSavedSearches();
+      }
+    } catch (error) {
+      console.error('Error deleting saved search:', error);
+    }
   }
   
   // Determine if search term is an advanced query or a simple search
@@ -2367,11 +2589,23 @@ function runDiagnostics() {
       return;
     }
     
-    // Show the number of results found
+    // Show the number of results found with export button
     const countMessage = document.createElement('div');
-    countMessage.className = 'alert alert-success mt-2 mb-3';
-    countMessage.innerHTML = `Found ${results.length} ${type} matching your search criteria`;
+    countMessage.className = 'alert alert-success mt-2 mb-3 d-flex justify-content-between align-items-center';
+    countMessage.innerHTML = `
+      <span>Found ${results.length} ${type} matching your search criteria</span>
+      <button class="btn btn-sm btn-outline-success" onclick="exportToCsv('${type}')">
+        Export to CSV
+      </button>
+    `;
     resultsContainer.appendChild(countMessage);
+    
+    // Store results in a global variable for export function to access
+    window.app = window.app || {};
+    window.app.lastSearchResults = {
+      type: type,
+      data: results
+    };
     
     // Define and initialize the HTML variable before using it
     let resultHtml = '<div class="search-results">';
@@ -2455,7 +2689,15 @@ function runDiagnostics() {
         }
       }
       
-      // Build the user card
+      // Prepare text for copy to clipboard
+      const copyText = `Name: ${firstName} ${lastName}
+Email: ${email}
+Type: ${type === 'users' ? 'Agent' : 'Requester'}
+${result.department ? 'Department: ' + result.department : ''}
+${result.job_title ? 'Job Title: ' + result.job_title : ''}
+${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
+      
+      // Build the user card with copy button
       resultHtml += `
         <div class="user-card mb-3 border rounded p-3">
           <div class="d-flex align-items-start">
@@ -2466,9 +2708,15 @@ function runDiagnostics() {
             <div class="user-details w-100">
               <div class="d-flex justify-content-between align-items-center">
                 <div class="user-name font-weight-bold">${firstName} ${lastName}</div>
-                <span class="badge badge-${result.active ? 'success' : 'secondary'} mr-2">
-                  ${result.active ? 'Active' : 'Inactive'}
-                </span>
+                <div>
+                  <button class="btn btn-sm btn-outline-secondary copy-btn" 
+                          onclick="copyToClipboard('${copyText.replace(/'/g, "\\'")}')">
+                    Copy Info
+                  </button>
+                  <span class="badge badge-${result.active ? 'success' : 'secondary'} ml-2">
+                    ${result.active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
               </div>
               <div class="user-email text-muted">${email}</div>
               <div class="user-meta mt-2">
@@ -2649,4 +2897,164 @@ function runDiagnostics() {
       console.error('Title element not found in the DOM');
     }
   }
+
+  // Helper function to copy text to clipboard
+  function copyToClipboard(text) {
+    // Create temp element
+    const el = document.createElement('textarea');
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    
+    try {
+      // Execute copy command
+      document.execCommand('copy');
+      
+      // Show success notification
+      const notification = document.createElement('div');
+      notification.style.position = 'fixed';
+      notification.style.bottom = '20px';
+      notification.style.right = '20px';
+      notification.style.backgroundColor = '#28a745';
+      notification.style.color = 'white';
+      notification.style.padding = '10px 15px';
+      notification.style.borderRadius = '4px';
+      notification.style.zIndex = '9999';
+      notification.textContent = 'Copied to clipboard!';
+      
+      document.body.appendChild(notification);
+      
+      // Auto-remove after 2 seconds
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+    
+    // Remove temp element
+    document.body.removeChild(el);
+  }
+
+  // Function to export search results to CSV
+  function exportToCsv(type) {
+    // Check if we have results to export
+    if (!window.app || !window.app.lastSearchResults || 
+        window.app.lastSearchResults.type !== type ||
+        !window.app.lastSearchResults.data ||
+        window.app.lastSearchResults.data.length === 0) {
+      console.error('No search results available to export');
+      return;
+    }
+    
+    const results = window.app.lastSearchResults.data;
+    
+    try {
+      // Determine the columns to include in the CSV
+      const commonColumns = [
+        { key: 'id', label: 'ID' },
+        { key: 'first_name', label: 'First Name' },
+        { key: 'last_name', label: 'Last Name' },
+        { key: 'email', label: 'Email' },
+        { key: 'active', label: 'Active' },
+        { key: 'department', label: 'Department' },
+        { key: 'job_title', label: 'Job Title' },
+        { key: 'work_phone_number', label: 'Phone' },
+        { key: 'created_at', label: 'Created Date' }
+      ];
+      
+      // Add type-specific columns
+      const columns = type === 'users' ? 
+        [...commonColumns, { key: 'occasional', label: 'Occasional' }] : 
+        commonColumns;
+      
+      // Create CSV header row
+      let csv = columns.map(col => `"${col.label}"`).join(',') + '\n';
+      
+      // Add data rows
+      results.forEach(result => {
+        const row = columns.map(col => {
+          // Get the value for this column
+          let value = result[col.key];
+          
+          // Format value based on type
+          if (value === undefined || value === null) {
+            return '';
+          } else if (typeof value === 'boolean') {
+            return value ? 'true' : 'false';
+          } else if (typeof value === 'object') {
+            // Handle arrays or objects
+            return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+          } else if (col.key === 'created_at' && value) {
+            // Format date
+            try {
+              return `"${new Date(value).toLocaleDateString()}"`;
+            } catch (e) {
+              return `"${value}"`;
+            }
+          } else {
+            // Escape quotes in strings
+            return `"${String(value).replace(/"/g, '""')}"`;
+          }
+        }).join(',');
+        
+        csv += row + '\n';
+      });
+      
+      // Create download link
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `freshservice_${type}_export_${new Date().toISOString().slice(0,10)}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Show success notification
+      const notification = document.createElement('div');
+      notification.style.position = 'fixed';
+      notification.style.bottom = '20px';
+      notification.style.right = '20px';
+      notification.style.backgroundColor = '#28a745';
+      notification.style.color = 'white';
+      notification.style.padding = '10px 15px';
+      notification.style.borderRadius = '4px';
+      notification.style.zIndex = '9999';
+      notification.textContent = `${results.length} ${type} exported to CSV successfully`;
+      
+      document.body.appendChild(notification);
+      
+      // Auto-remove after 3 seconds
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 3000);
+    } catch (error) {
+      console.error('Error exporting to CSV:', error);
+      
+      // Show error notification
+      const notification = document.createElement('div');
+      notification.style.position = 'fixed';
+      notification.style.bottom = '20px';
+      notification.style.right = '20px';
+      notification.style.backgroundColor = '#dc3545';
+      notification.style.color = 'white';
+      notification.style.padding = '10px 15px';
+      notification.style.borderRadius = '4px';
+      notification.style.zIndex = '9999';
+      notification.textContent = `Error exporting to CSV: ${error.message}`;
+      
+      document.body.appendChild(notification);
+      
+      // Auto-remove after 3 seconds
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 3000);
+    }
+  }
+
+  // Make function available globally
+  window.exportToCsv = exportToCsv;
 })();
