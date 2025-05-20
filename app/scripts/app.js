@@ -1783,10 +1783,9 @@ function runDiagnostics() {
       console.log('Using advanced query:', searchTerm);
       queryString = searchTerm;
     } else {
-      // For simple text search, Freshservice API needs the name format
-      // For simple queries, we should just pass the search term without special formatting
-      console.log('Using simple name search');
-      queryString = searchTerm;
+      // Use the prefix search syntax for first_name, last_name, or email
+      console.log('Using prefix search across multiple fields');
+      queryString = `~[first_name|last_name|email]:'${searchTerm}'`;
     }
     
     // Perform search based on active tab with the query
@@ -1876,9 +1875,9 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      // Try using name parameter for simple text search instead of query
+      // Use the query parameter with properly encoded query syntax
       const encodedQuery = encodeURIComponent(query);
-      const apiUrl = `${app.apiUrl}/api/v2/agents?name=${encodedQuery}`;
+      const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2108,9 +2107,9 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query using name parameter for simple text search
+        // Build the query using the query parameter with advanced syntax
         const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/agents?name=${encodedQuery}`;
+        const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
         console.log('Direct fetch URL:', apiUrl);
         
                   // Try to use rate-limited client.request if available
@@ -2321,10 +2320,9 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      // Try a different approach - use name parameter for simple searches instead of query
+      // Use the query parameter with properly encoded query syntax
       const encodedQuery = encodeURIComponent(query);
-      // Use the name parameter which works better for text search
-      const apiUrl = `${app.apiUrl}/api/v2/requesters?name=${encodedQuery}`;
+      const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2554,9 +2552,9 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query using the name parameter which works better for text search
+        // Build the query using the query parameter with advanced syntax
         const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/requesters?name=${encodedQuery}`;
+        const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
         console.log('Direct fetch URL:', apiUrl);
         
         // Try to use rate-limited client.request if available
