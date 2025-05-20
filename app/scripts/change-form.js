@@ -771,6 +771,9 @@ function renderSearchResults(type, results) {
     return;
   }
   
+  // Always set display to block to show results container
+  resultsContainer.style.display = 'block';
+  
   if (!results || results.length === 0) {
     resultsContainer.innerHTML = '<div class="alert alert-info">No results found</div>';
     return;
@@ -784,21 +787,44 @@ function renderSearchResults(type, results) {
       const displayName = user.first_name && user.last_name 
         ? `${user.first_name} ${user.last_name}`
         : (user.name || 'Unknown User');
-        
+      
+      // Create badges for important user information
+      let badges = '';
+      
+      if (user.department_name || user.department) {
+        badges += `<span class="badge badge-info mr-1">${user.department_name || user.department}</span>`;
+      }
+      
+      if (user.location_name || user.location) {
+        badges += `<span class="badge badge-secondary mr-1">${user.location_name || user.location}</span>`;
+      }
+      
+      if (user.job_title) {
+        badges += `<span class="badge badge-light mr-1">${user.job_title}</span>`;
+      }
+      
+      if (user.primary) {
+        badges += `<span class="badge badge-success mr-1">Primary</span>`;
+      }
+      
       content += `
         <a href="#" class="list-group-item list-group-item-action" 
            data-id="${user.id}" 
            data-name="${displayName}" 
            data-email="${user.email || ''}" 
            data-department="${user.department_name || user.department || ''}"
+           data-location="${user.location_name || user.location || ''}"
+           data-job-title="${user.job_title || ''}"
            onclick="selectUser('${type}', this.dataset)">
           <div class="d-flex justify-content-between align-items-center">
-            <div>
+            <div class="user-details">
               <h5 class="mb-1">${displayName}</h5>
-              <p class="mb-1">${user.email || ''}</p>
-              ${user.department_name || user.department ? `<small class="text-muted">Department: ${user.department_name || user.department}</small>` : ''}
+              <p class="mb-1 user-email">${user.email || ''}</p>
+              <div class="user-meta">
+                ${badges}
+              </div>
             </div>
-            <span class="badge badge-primary badge-pill">Select</span>
+            <span class="badge badge-primary badge-select">Select</span>
           </div>
         </a>
       `;
@@ -814,31 +840,64 @@ function renderSearchResults(type, results) {
 
 // Add to global scope for HTML onclick handlers
 window.selectUser = function(type, userData) {
+  if (!userData) {
+    console.error('No user data provided');
+    return;
+  }
+  
   selectedItems[type] = userData;
   
   const selectedItem = document.getElementById('selected' + type.charAt(0).toUpperCase() + type.slice(1));
   const nameElement = document.getElementById(type + 'Name');
   const emailElement = document.getElementById(type + 'Email');
+  const deptElement = document.getElementById(type + 'Dept');
   
-  if (selectedItem && nameElement && emailElement) {
-    nameElement.textContent = userData.name;
-    emailElement.textContent = userData.email;
-    
-    // For requesters, also populate department
-    if (type === 'requester') {
-      const deptElement = document.getElementById(type + 'Dept');
-      if (deptElement) {
-        deptElement.textContent = userData.department || '';
-      }
+  if (selectedItem) {
+    if (nameElement) {
+      nameElement.textContent = userData.name || 'Unknown Name';
     }
     
+    if (emailElement) {
+      emailElement.textContent = userData.email || '';
+    }
+    
+    // For all user types, populate department and other fields if they exist
+    if (deptElement) {
+      // Create a formatted text with all additional information
+      const additionalInfo = [];
+      
+      if (userData.department) {
+        additionalInfo.push(`Department: ${userData.department}`);
+      }
+      
+      if (userData.location) {
+        additionalInfo.push(`Location: ${userData.location}`);
+      }
+      
+      if (userData.jobTitle) {
+        additionalInfo.push(`Role: ${userData.jobTitle}`);
+      }
+      
+      deptElement.textContent = additionalInfo.join(' | ');
+    }
+    
+    // Show the selected item
     selectedItem.classList.remove('d-none');
+  } else {
+    console.error(`Selected item container for ${type} not found`);
   }
   
-  // Clear search results
+  // Clear search results and hide the container
   const resultsContainer = document.getElementById(type + 'Results');
   if (resultsContainer) {
     resultsContainer.innerHTML = '';
+    resultsContainer.style.display = 'none';
+  }
+  
+  // Also clear the search input
+  const searchInput = document.getElementById(type + 'Search');
+  if (searchInput) {
+    searchInput.value = '';
   }
 };
 

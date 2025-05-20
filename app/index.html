@@ -50,15 +50,12 @@
                         <div class="form-group">
                           <label for="requesterSearch">Requester</label>
                           <div class="input-group">
-                            <input type="text" id="requesterSearch" class="form-control" placeholder="Search for requester..." 
-                                  onkeyup="if(event.key === 'Enter') searchRequesters('requester')">
+                            <input type="text" id="requesterSearch" class="form-control" placeholder="Start typing to search for requesters...">
                             <div class="input-group-append">
-                              <button class="btn btn-outline-secondary" type="button" id="requesterSearchBtn" onclick="searchRequesters('requester')">
-                                <i class="fa fa-search"></i> Search
-                              </button>
+                              <span class="input-group-text"><i class="fa fa-search"></i></span>
                             </div>
                           </div>
-                          <small class="form-text text-muted">Search for requesters by name or email</small>
+                          <small class="form-text text-muted">Search will begin automatically after typing 2 characters</small>
                           <div id="requesterResults" class="search-results mt-2 shadow-sm"></div>
                           <div id="selectedRequester" class="selected-item mt-2 d-none">
                             <div class="card border-primary">
@@ -84,15 +81,12 @@
                         <div class="form-group">
                           <label for="agentSearch">Agent</label>
                           <div class="input-group">
-                            <input type="text" id="agentSearch" class="form-control" placeholder="Search for agent..." 
-                                  onkeyup="if(event.key === 'Enter') searchUsers('agent')">
+                            <input type="text" id="agentSearch" class="form-control" placeholder="Start typing to search for agents...">
                             <div class="input-group-append">
-                              <button class="btn btn-outline-secondary" type="button" id="agentSearchBtn" onclick="searchUsers('agent')">
-                                <i class="fa fa-search"></i> Search
-                              </button>
+                              <span class="input-group-text"><i class="fa fa-search"></i></span>
                             </div>
                           </div>
-                          <small class="form-text text-muted">Search for agents by name or email</small>
+                          <small class="form-text text-muted">Search will begin automatically after typing 2 characters</small>
                           <div id="agentResults" class="search-results mt-2 shadow-sm"></div>
                           <div id="selectedAgent" class="selected-item mt-2 d-none">
                             <div class="card border-primary">
@@ -101,6 +95,7 @@
                                   <div>
                                     <h5 class="card-title mb-1" id="agentName"></h5>
                                     <h6 class="card-subtitle mb-1 text-muted" id="agentEmail"></h6>
+                                    <p class="card-text small" id="agentDept"></p>
                                   </div>
                                   <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSelectedItem('agent')">
                                     <i class="fa fa-times"></i> Clear

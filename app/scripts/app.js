@@ -536,143 +536,25 @@ function runDiagnostics() {
   
   // Initialize by directly accessing the Freshworks Client factory
   function initializeApp() {
-    console.log('Initializing app...');
+    console.log('Initializing Change Management app');
     
-    // Check if we should use development mode
-    if (window.__DEV_MODE__) {
-      console.log('Development mode detected - using development client');
-      const devClient = createDevClient();
-      window.client = devClient;
-      onClientReady(devClient);
-      
-      // Add a click handler to the dev badge to clear settings
-      document.addEventListener('DOMContentLoaded', function() {
-        const devBadge = document.querySelector('div[style*="DEV MODE"]');
-        if (devBadge) {
-          devBadge.style.cursor = 'pointer';
-          devBadge.title = 'Click to clear saved settings';
-          devBadge.addEventListener('click', function() {
-            if (window.client && window.client.db) {
-              window.client.db.delete('app_config')
-                .then(() => {
-                  console.log('Cleared settings from data storage');
-                  // Also clear localStorage for complete cleanup
-                  localStorage.removeItem('freshservice_change_management_iparams');
-                  localStorage.removeItem('appConfig');
-                })
-                .catch(err => console.error('Error clearing settings from data storage:', err));
-            } else {
-              // Fallback to localStorage only
-              localStorage.removeItem('freshservice_change_management_iparams');
-              localStorage.removeItem('appConfig');
-            }
-            
-            // Show notification instead of using alert
-            const notification = document.createElement('div');
-            notification.style.position = 'fixed';
-            notification.style.top = '40px';
-            notification.style.right = '10px';
-            notification.style.backgroundColor = '#4CAF50';
-            notification.style.color = 'white';
-            notification.style.padding = '10px';
-            notification.style.borderRadius = '4px';
-            notification.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-            notification.style.zIndex = '9999';
-            notification.textContent = 'Settings cleared. Reload page to enter new settings.';
-            
-            // Add close button
-            const closeBtn = document.createElement('span');
-            closeBtn.textContent = '✕';
-            closeBtn.style.marginLeft = '10px';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.onclick = function() {
-              document.body.removeChild(notification);
-            };
-            notification.appendChild(closeBtn);
-            
-            // Add reload button
-            const reloadBtn = document.createElement('button');
-            reloadBtn.textContent = 'Reload Now';
-            reloadBtn.style.marginLeft = '10px';
-            reloadBtn.style.border = '1px solid white';
-            reloadBtn.style.background = 'transparent';
-            reloadBtn.style.color = 'white';
-            reloadBtn.style.padding = '2px 5px';
-            reloadBtn.style.cursor = 'pointer';
-            reloadBtn.style.borderRadius = '3px';
-            reloadBtn.onclick = function() {
-              location.reload();
-            };
-            notification.appendChild(reloadBtn);
-            
-            // Auto-remove after 5 seconds
-            document.body.appendChild(notification);
-            setTimeout(function() {
-              if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-              }
-            }, 5000);
-          });
-        }
+    // Show the loading indicator
+    toggleSpinner(true);
+    
+    // Attempt to get client from the Freshworks SDK
+    client.initialized()
+      .then(function() {
+        console.log('Freshworks Client initialized');
+        onClientReady(client);
+      })
+      .catch(function(error) {
+        console.error('Failed to initialize Freshworks client:', error);
+        // Fall back to direct initialization without the client
+        initializeFallback();
       });
       
-      return;
-    }
-    
-    // Standard Freshworks app initialization for production
-    
-    // Check if we're in Freshworks environment (with app loader)
-    if (typeof FreshworksWidget !== 'undefined' || 
-        typeof apploader !== 'undefined' || 
-        document.querySelector('freshworks-app-root')) {
-      console.log('Freshworks environment detected');
-    }
-    
-    // Try to find the app.initialized method from parent contexts
-    let freshworksApp = null;
-    
-    // First check our own context
-    if (window.app && typeof window.app.initialized === 'function') {
-      console.log('Found app.initialized in window.app');
-      freshworksApp = window.app;
-    } 
-    // Check if we're in an iframe and try to access parent context
-    else if (window.parent && window.parent !== window) {
-      console.log('Checking parent window for app.initialized');
-      try {
-        if (window.parent.app && typeof window.parent.app.initialized === 'function') {
-          console.log('Found app.initialized in parent.app');
-          freshworksApp = window.parent.app;
-        }
-      } catch (e) {
-        console.error('Error accessing parent window:', e);
-      }
-    }
-    
-    // If we found an app context with initialized method, use it
-    if (freshworksApp) {
-      console.log('Using found app.initialized method');
-      try {
-        // Standard initialization as recommended by Freshworks
-        freshworksApp.initialized()
-          .then(function(client) {
-            console.log('Client initialization successful using app.initialized');
-            window.client = client;
-            onClientReady(client);
-          })
-          .catch(function(error) {
-            console.error('Error initializing client using app.initialized:', error);
-            initializeFallback();
-          });
-      } catch (error) {
-        console.error('Error calling app.initialized:', error);
-        initializeFallback();
-      }
-    } else {
-      // No app.initialized found, try fallback
-      console.log('No app.initialized method found, using fallback');
-      initializeFallback();
-    }
+    // Set up integration with change form
+    integrateWithChangeForm();
   }
   
   // Fallback initialization - try Freshworks App SDK methods
@@ -1833,731 +1715,303 @@ function runDiagnostics() {
   
   // Search for users via Freshservice API
   function searchUsers(query) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       // Check if API URL and key are available
       if (!app.apiUrl || !app.apiKey) {
-        showError('API configuration is missing. Please check app installation parameters.');
-        // Resolve with sample data instead of rejecting
-        const sampleData = renderSampleUsers(query);
-        resolve(sampleData);
-        return;
+        console.error('API URL or API Key not configured');
+        showError('API configuration missing. Please check your settings.');
+        toggleSpinner(false);
+        return reject(new Error('API configuration missing'));
       }
       
-      console.log('Searching users with query:', query);
-      console.log('Using API URL:', app.apiUrl);
-      
-      // Validate API URL
-      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
-        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
-        const sampleData = renderSampleUsers(query);
-        resolve(sampleData);
-        return;
-      }
+      // Show loading spinner
+      toggleSpinner(true);
       
       try {
-        // Create Basic Auth token
-        const authToken = btoa(app.apiKey + ':X');
-        console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
-        
-        // Build the query - exactly matching the documented format
-        // For agents whose first name or last name starts with 'query'
+        // Build the query with proper encoding
         const queryString = `~[first_name|last_name]:'${query}'`;
         const encodedQuery = encodeURIComponent(queryString);
-        const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
-        console.log('Request URL:', apiUrl);
+        const apiPath = `/api/v2/agents?query="${encodedQuery}"`;
+        console.log('Request URL:', app.apiUrl + apiPath);
         
-        // Make the API call
-        fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': 'Basic ' + authToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then(data => {
-          console.log('API response:', data);
+        // Use client.request instead of fetch
+        if (window.client && window.client.request) {
+          // Create an object to track if the request has been aborted
+          const abortInfo = { isAborted: false };
           
-          if (data && data.agents && Array.isArray(data.agents)) {
-            console.log(`Found ${data.agents.length} agents matching the query`);
-            renderResults('users', data.agents);
-            resolve(data.agents);
-          } else {
-            console.warn('Response contained no agents array:', data);
-            // Check if data is in a different format
-            if (data && Array.isArray(data)) {
-              console.log('Data appears to be an array directly, using as agents');
-              renderResults('users', data);
-              resolve(data);
+          // Create the request promise
+          const requestPromise = window.client.request.get(apiPath, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          })
+          .then(response => {
+            // Skip processing if the request was aborted
+            if (abortInfo.isAborted) {
+              console.log('Request was aborted');
+              return { agents: [] };
+            }
+            
+            // Parse the response JSON
+            const data = JSON.parse(response.response);
+            return data;
+          })
+          .then(data => {
+            console.log('API response:', data);
+            
+            if (data && data.agents && Array.isArray(data.agents)) {
+              console.log(`Found ${data.agents.length} agents matching the query`);
+              renderResults('users', data.agents);
+              resolve(data.agents);
             } else {
+              console.warn('Response contained no agents array:', data);
+              // Check if data is in a different format
+              if (data && Array.isArray(data)) {
+                console.log('Data appears to be an array directly, using as agents');
+                renderResults('users', data);
+                resolve(data);
+              } else {
+                renderResults('users', []);
+                resolve([]);
+              }
+            }
+          })
+          .catch(error => {
+            // Skip rendering if the request was aborted
+            if (abortInfo.isAborted) {
+              console.log('Request was aborted');
+              return resolve([]);
+            }
+            
+            console.error('API request failed:', error);
+            
+            let errorMessage = 'API request failed';
+            if (error.status) {
+              errorMessage += ` (Status: ${error.status})`;
+            }
+            if (error.message) {
+              errorMessage += `: ${error.message}`;
+            }
+            
+            showError(errorMessage);
+            renderResults('users', []);
+            resolve([]);
+          })
+          .finally(function() {
+            toggleSpinner(false);
+          });
+          
+          // Add an abort method to the promise
+          requestPromise.abort = () => {
+            abortInfo.isAborted = true;
+            // Note: client.request doesn't support aborting directly, 
+            // but we can prevent the handlers from processing the response
+          };
+          
+          return requestPromise;
+        } else {
+          // Fallback to fetch if client.request is not available
+          const authToken = btoa(app.apiKey + ':X');
+          console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
+          
+          const apiUrl = `${app.apiUrl}${apiPath}`;
+          
+          // Create an AbortController to handle request cancellation
+          const controller = new AbortController();
+          const signal = controller.signal;
+          
+          // Attach the abort controller to the promise for external cancellation
+          const fetchPromise = fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            signal: signal
+          });
+          
+          // Add abort method to the promise
+          fetchPromise.abort = () => controller.abort();
+          
+          // Return the fetch promise
+          fetchPromise
+            .then(response => {
+              if (!response.ok) {
+                const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
+                error.status = response.status;
+                throw error;
+              }
+              return response.json();
+            })
+            .then(data => {
+              console.log('API response:', data);
+              
+              if (data && data.agents && Array.isArray(data.agents)) {
+                console.log(`Found ${data.agents.length} agents matching the query`);
+                renderResults('users', data.agents);
+                resolve(data.agents);
+              } else {
+                console.warn('Response contained no agents array:', data);
+                // Check if data is in a different format
+                if (data && Array.isArray(data)) {
+                  console.log('Data appears to be an array directly, using as agents');
+                  renderResults('users', data);
+                  resolve(data);
+                } else {
+                  renderResults('users', []);
+                  resolve([]);
+                }
+              }
+            })
+            .catch(error => {
+              // Skip rendering if the request was aborted
+              if (error.name === 'AbortError') {
+                console.log('Request was aborted');
+                return resolve([]);
+              }
+              
+              console.error('API request failed:', error);
+              
+              let errorMessage = 'API request failed';
+              if (error.status) {
+                errorMessage += ` (Status: ${error.status})`;
+              }
+              if (error.message) {
+                errorMessage += `: ${error.message}`;
+              }
+              
+              showError(errorMessage);
               renderResults('users', []);
               resolve([]);
-            }
-          }
-        })
-        .catch(function(error) {
-          console.error('API request failed:', error);
+            })
+            .finally(function() {
+              toggleSpinner(false);
+            });
           
-          // Add more detailed debugging - log the complete error object
-          console.log('Complete error object:', JSON.stringify(error));
-          
-          let errorMessage = 'API request failed';
-          if (error.status) {
-            errorMessage += ` (Status: ${error.status})`;
-          }
-          if (error.message) {
-            errorMessage += `: ${error.message}`;
-          }
-          
-          showError(errorMessage);
-          
-          // Always fall back to sample data if the API call fails
-          console.log('API call failed, falling back to sample data');
-          const sampleData = renderSampleUsers(query);
-          resolve(sampleData);
-        })
-        .finally(function() {
-          toggleSpinner(false);
-        });
+          // Return the fetch promise for external control
+          return fetchPromise;
+        }
       } catch (error) {
         console.error('Error in search:', error);
         showError(`Error making API request: ${error.message}`);
-        const sampleData = renderSampleUsers(query);
-        resolve(sampleData);
+        renderResults('users', []);
         toggleSpinner(false);
+        return reject(error);
       }
     });
   }
   
   // Search for requesters via Freshservice API
   function searchRequesters(query) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       // Check if API URL and key are available
       if (!app.apiUrl || !app.apiKey) {
-        showError('API configuration is missing. Please check app installation parameters.');
+        console.error('API URL or API Key not configured');
+        showError('API configuration missing. Please check your settings.');
         toggleSpinner(false);
-        resolve([]);
-        return;
+        return reject(new Error('API configuration missing'));
       }
       
-      console.log('Searching requesters with query:', query);
-      console.log('Using API URL:', app.apiUrl);
-      
-      // Validate API URL
-      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
-        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
-        toggleSpinner(false);
-        resolve([]);
-        return;
-      }
+      // Show loading spinner
+      toggleSpinner(true);
       
       try {
         // Create Basic Auth token
         const authToken = btoa(app.apiKey + ':X');
         console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
         
-        // Build the query - exactly matching the documented format
-        // For requesters whose first name or last name starts with 'query'
-        const queryString = `~[first_name|last_name]:'${query}'`;
+        // Build the query with proper encoding - include email in search fields
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
         const encodedQuery = encodeURIComponent(queryString);
         const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
         console.log('Request URL:', apiUrl);
         
-        // Make the API call
-        fetch(apiUrl, {
+        // Create an AbortController to handle request cancellation
+        const controller = new AbortController();
+        const signal = controller.signal;
+        
+        // Attach the abort controller to the promise for external cancellation
+        const fetchPromise = fetch(apiUrl, {
           method: 'GET',
           headers: {
             'Authorization': 'Basic ' + authToken,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
-          }
-        })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then(data => {
-          console.log('API response:', data);
-          
-          if (data && data.requesters && Array.isArray(data.requesters)) {
-            console.log(`Found ${data.requesters.length} requesters matching the query`);
-            renderResults('requesters', data.requesters);
-            resolve(data.requesters);
-          } else {
-            console.warn('Response contained no requesters array:', data);
-            // Check if data is in a different format
-            if (data && Array.isArray(data)) {
-              console.log('Data appears to be an array directly, using as requesters');
-              renderResults('requesters', data);
-              resolve(data);
-            } else {
-              renderResults('requesters', []);
-              resolve([]);
-            }
-          }
-        })
-        .catch(function(error) {
-          console.error('API request failed:', error);
-          
-          let errorMessage = 'API request failed';
-          if (error.status) {
-            errorMessage += ` (Status: ${error.status})`;
-          }
-          if (error.message) {
-            errorMessage += `: ${error.message}`;
-          }
-          
-          showError(errorMessage);
-          renderResults('requesters', []);
-          resolve([]);
-        })
-        .finally(function() {
-          toggleSpinner(false);
+          },
+          signal: signal
         });
+        
+        // Add abort method to the promise
+        fetchPromise.abort = () => controller.abort();
+        
+        // Return the fetch promise
+        fetchPromise
+          .then(response => {
+            if (!response.ok) {
+              const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
+              error.status = response.status;
+              throw error;
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('API response:', data);
+            
+            if (data && data.requesters && Array.isArray(data.requesters)) {
+              console.log(`Found ${data.requesters.length} requesters matching the query`);
+              renderResults('requesters', data.requesters);
+              resolve(data.requesters);
+            } else {
+              console.warn('Response contained no requesters array:', data);
+              // Check if data is in a different format
+              if (data && Array.isArray(data)) {
+                console.log('Data appears to be an array directly, using as requesters');
+                renderResults('requesters', data);
+                resolve(data);
+              } else {
+                renderResults('requesters', []);
+                resolve([]);
+              }
+            }
+          })
+          .catch(error => {
+            // Skip rendering if the request was aborted
+            if (error.name === 'AbortError') {
+              console.log('Request was aborted');
+              return resolve([]);
+            }
+            
+            console.error('API request failed:', error);
+            
+            let errorMessage = 'API request failed';
+            if (error.status) {
+              errorMessage += ` (Status: ${error.status})`;
+            }
+            if (error.message) {
+              errorMessage += `: ${error.message}`;
+            }
+            
+            showError(errorMessage);
+            renderResults('requesters', []);
+            resolve([]);
+          })
+          .finally(function() {
+            toggleSpinner(false);
+          });
+        
+        // Return the fetch promise for external control
+        return fetchPromise;
       } catch (error) {
         console.error('Error in search:', error);
         showError(`Error making API request: ${error.message}`);
         renderResults('requesters', []);
-        resolve([]);
         toggleSpinner(false);
+        return reject(error);
       }
     });
   }
-  
-  // Render search results
-  function renderResults(type, results) {
-    console.log(`Attempting to render ${results.length} ${type} results`);
-    
-    // Map type to the actual container ID used in HTML
-    // The HTML uses "agentResults" for agents and "requesterResults" for requesters
-    let containerId;
-    if (type === 'users') {
-      containerId = 'agentResults'; // Map 'users' to 'agentResults'
-    } else if (type === 'requesters') {
-      containerId = 'requesterResults'; // Map 'requesters' to 'requesterResults'
-    } else {
-      containerId = `${type}Results`; // Default fallback
-    }
-    
-    console.log(`Looking for container with ID: ${containerId}`);
-    
-    // Find the results container - try multiple possible selectors
-    let resultsContainer = document.getElementById(containerId);
-    
-    // If not found by ID, try other selectors
-    if (!resultsContainer) {
-      console.warn(`Results container '${containerId}' not found by ID, trying alternative selectors`);
-      
-      // Try other selectors that might match the container
-      const possibleSelectors = [
-        `.${type}-results`,
-        `.search-results[id*="${type}"]`,
-        `.search-results[id*="agent"]`, // For 'users' type
-        `.search-results[id*="requester"]`, // For 'requesters' type
-        `#${type}-results`,
-        `#${type}-results-container`,
-        `[data-results="${type}"]`,
-        `.tab-pane.active .search-results`, // Match the actual class in HTML
-        `.tab-pane.active .results-container`
-      ];
-      
-      for (const selector of possibleSelectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          console.log(`Found results container using selector: ${selector}`);
-          resultsContainer = element;
-          break;
-        }
-      }
-      
-      // If still not found, try to create a container
-      if (!resultsContainer) {
-        console.warn(`No results container found, attempting to create one`);
-        const tabPane = document.querySelector(`.tab-pane.active, #${type}-tab-pane`);
-        
-        if (tabPane) {
-          console.log(`Found tab pane, creating results container inside it`);
-          resultsContainer = document.createElement('div');
-          resultsContainer.id = containerId;
-          resultsContainer.className = 'search-results mt-2 shadow-sm'; // Match the classes in HTML
-          tabPane.appendChild(resultsContainer);
-        } else {
-          // Last resort - create container in the main content area
-          console.warn(`No tab pane found, creating results container in main content`);
-          const mainContent = document.querySelector('.container, main, #app, body');
-          
-          if (mainContent) {
-            resultsContainer = document.createElement('div');
-            resultsContainer.id = containerId;
-            resultsContainer.className = 'search-results mt-2 shadow-sm'; // Match the classes in HTML
-            mainContent.appendChild(resultsContainer);
-          } else {
-            console.error(`Could not find any suitable parent element for results container`);
-            // Show error with showError instead of alert
-            showError(`Could not render ${type} results. No suitable container found.`);
-            return;
-          }
-        }
-      }
-    }
-    
-    console.log(`Found results container for ${type}:`, resultsContainer);
-    
-    // Verify we're not using the wrong container 
-    // (e.g., using requesterResults for agents or vice versa)
-    if (type === 'users' && resultsContainer.id === 'requesterResults') {
-      console.warn('Found requesterResults container but searching for users/agents');
-      // Try to find the correct container specifically
-      const agentContainer = document.getElementById('agentResults');
-      if (agentContainer) {
-        console.log('Found correct agentResults container');
-        resultsContainer = agentContainer;
-      }
-    } else if (type === 'requesters' && resultsContainer.id === 'agentResults') {
-      console.warn('Found agentResults container but searching for requesters');
-      // Try to find the correct container specifically
-      const requesterContainer = document.getElementById('requesterResults');
-      if (requesterContainer) {
-        console.log('Found correct requesterResults container');
-        resultsContainer = requesterContainer;
-      }
-    }
-    
-    // Remove search status message if it exists
-    const statusMsg = document.getElementById('searchStatus');
-    if (statusMsg) {
-      statusMsg.remove();
-    }
-    
-    // Make sure results is an array
-    if (!Array.isArray(results)) {
-      console.error('Results is not an array:', results);
-      resultsContainer.innerHTML = `
-        <div class="alert alert-danger mt-3">
-          Error: Received invalid data format from API.
-        </div>
-      `;
-      return;
-    }
-    
-    // Clear previous results first
-    resultsContainer.innerHTML = '';
-    
-    if (results.length === 0) {
-      resultsContainer.innerHTML = `
-        <div class="alert alert-info mt-3">
-          No ${type} found matching your search criteria.
-        </div>
-      `;
-      return;
-    }
-    
-    // Show the number of results found without export button
-    const countMessage = document.createElement('div');
-    countMessage.className = 'alert alert-success mt-2 mb-3';
-    countMessage.innerHTML = `
-      <span>Found ${results.length} ${type} matching your search criteria</span>
-    `;
-    resultsContainer.appendChild(countMessage);
-    
-    // Define and initialize the HTML variable before using it
-    let resultHtml = '<div class="search-results">';
-    
-    // Build each result card
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      
-      // Skip if result is null or undefined
-      if (!result) {
-        console.warn(`Skipping null/undefined result at index ${i}`);
-        continue;
-      }
-      
-      // Handle potentially missing or null fields
-      const firstName = result.first_name || '';
-      const lastName = result.last_name || '';
-      const email = result.email || 'No email provided';
-      const initials = getInitials(firstName, lastName);
-      const active = typeof result.active === 'boolean' ? result.active : true;
-      
-      // Get location and department info
-      const locationName = result.location_name || '';
-      const departmentName = result.department_names && result.department_names.length ? 
-                            result.department_names.join(', ') : 
-                            (result.department || '');
-      
-      // Build additional attributes section
-      let additionalAttributes = '';
-      
-      // Function to safely add a badge if the attribute exists
-      const addBadgeIfExists = (label, value, badgeClass = 'badge-secondary') => {
-        if (value !== undefined && value !== null && value !== '') {
-          return `<span class="badge ${badgeClass} mr-1">${label}: ${value}</span>`;
-        }
-        return '';
-      };
-      
-      // Add department info
-      if (departmentName) {
-        additionalAttributes += addBadgeIfExists('Dept', departmentName, 'badge-light');
-      }
-      
-      // Add job title if available
-      if (result.job_title) {
-        additionalAttributes += addBadgeIfExists('Job', result.job_title, 'badge-light');
-      }
-      
-      // Add location if available
-      if (locationName) {
-        additionalAttributes += addBadgeIfExists('Location', locationName, 'badge-light');
-      }
-      
-      // Add phone if available - check both work and mobile
-      if (result.work_phone_number) {
-        additionalAttributes += addBadgeIfExists('Phone', result.work_phone_number, 'badge-light');
-      } else if (result.mobile_phone_number) {
-        additionalAttributes += addBadgeIfExists('Mobile', result.mobile_phone_number, 'badge-light');
-      }
-      
-      // Add role info if available
-      if (result.roles && Array.isArray(result.roles) && result.roles.length > 0) {
-        try {
-          const roleNames = result.roles.map(r => r.name || r.role_id).join(', ');
-          additionalAttributes += addBadgeIfExists('Roles', roleNames, 'badge-info');
-        } catch (error) {
-          console.warn('Error processing roles:', error);
-        }
-      }
-      
-      // Add group memberships if available
-      if (result.member_of && Array.isArray(result.member_of) && result.member_of.length > 0) {
-        additionalAttributes += addBadgeIfExists('Member of', result.member_of.join(', '), 'badge-info');
-      }
-      
-      // Add occasional status for agents
-      if (type === 'users' && result.occasional !== undefined) {
-        additionalAttributes += `
-          <span class="badge ${result.occasional ? 'badge-warning' : 'badge-dark'} mr-1">
-            ${result.occasional ? 'Occasional' : 'Full-time'}
-          </span>
-        `;
-      }
-      
-      // Build the user card without Copy Info button
-      resultHtml += `
-        <div class="user-card mb-3 border rounded p-3" data-id="${result.id}">
-          <div class="d-flex align-items-start">
-            <div class="user-icon rounded-circle text-center text-white bg-primary mr-3" 
-                 style="width: 40px; height: 40px; line-height: 40px; font-weight: bold;">
-              ${initials}
-            </div>
-            <div class="user-details w-100">
-              <div class="d-flex justify-content-between align-items-center">
-                <div class="user-name font-weight-bold">${firstName} ${lastName}</div>
-                <div>
-                  <button class="btn btn-sm btn-primary select-btn" 
-                          onclick="selectUser('${type === 'users' ? 'agent' : 'requester'}', {
-                            id: ${result.id}, 
-                            name: '${(firstName + ' ' + lastName).replace(/'/g, "\\'")}',
-                            email: '${email.replace(/'/g, "\\'")}',
-                            department: '${departmentName.replace(/'/g, "\\'")}',
-                            location: '${locationName.replace(/'/g, "\\'")}'
-                          })">
-                    Select
-                  </button>
-                  <span class="badge badge-${active ? 'success' : 'secondary'} ml-2">
-                    ${active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-              </div>
-              <div class="user-email text-muted">${email}</div>
-              <div class="user-meta mt-2">
-                ${type === 'users' ? 
-                  `<span class="badge badge-info mr-2">Agent</span>` : 
-                  `<span class="badge badge-primary mr-2">Requester</span>`
-                }
-                ${additionalAttributes}
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-    
-    resultHtml += '</div>';
-    
-    // Set the HTML content
-    resultsContainer.innerHTML += resultHtml;
-    
-    // Add a note about available fields
-    const fieldsNote = document.createElement('div');
-    fieldsNote.className = 'small text-muted mt-3';
-    fieldsNote.innerHTML = `
-      <p>Tip: You can search by name or email, or use advanced query syntax for more specific searches.</p>
-    `;
-    resultsContainer.appendChild(fieldsNote);
-  }
-  
-  // Helper function to get initials from name
-  function getInitials(firstName, lastName) {
-    let initials = '';
-    
-    if (firstName) {
-      initials += firstName.charAt(0).toUpperCase();
-    }
-    
-    if (lastName) {
-      initials += lastName.charAt(0).toUpperCase();
-    }
-    
-    return initials || '?';
-  }
-  
-  // Toggle loading spinner
-  function toggleSpinner(show) {
-    const spinner = document.getElementById('spinnerOverlay');
-    
-    if (show) {
-      spinner.classList.remove('d-none');
-    } else {
-      spinner.classList.add('d-none');
-    }
-  }
-  
-  // Show error message
-  function showError(message, error) {
-    // Log error details to console
-    logErrorDetails(message, error);
-    
-    // Hide spinner if visible
-    toggleSpinner(false);
-    
-    // Display error in UI
-    displayErrorInUI(message);
-  }
-  
-  // Log error details to console
-  function logErrorDetails(message, error) {
-    if (error) {
-      console.error(message, error);
-      
-      // Add more debug info if available
-      if (error.response) {
-        try {
-          const responseData = JSON.parse(error.response);
-          console.error('Error response data:', responseData);
-        } catch (e) {
-          console.error('Error response (not JSON):', error.response);
-        }
-      }
-    } else {
-      console.error(message);
-    }
-  }
-  
-  // Function to test the API credentials
-  function testApiCredentials() {
-    return new Promise((resolve, reject) => {
-      if (!app.apiUrl || !app.apiKey) {
-        reject(new Error('API URL or API Key is not configured'));
-        return;
-      }
-      
-      // Quick validation of API URL format
-      if (!app.apiUrl.includes('.freshservice.com')) {
-        reject(new Error('API URL must be a valid Freshservice domain'));
-        return;
-      }
-      
-      console.log('Testing API credentials...');
-      
-      // Create auth token
-      const authToken = btoa(app.apiKey + ':X');
-      
-      // Try to fetch a simple endpoint (just one agent)
-      const testUrl = `${app.apiUrl}/api/v2/agents?per_page=1`;
-      
-      // Use rate-limited client.request when available, otherwise fall back to rate-limited fetch
-      if (window.client && window.client.request) {
-        const options = {
-          headers: {
-            'Authorization': 'Basic ' + authToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        };
-        
-        // Use apiUtils for rate limiting if available
-        const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
-        
-        requestMethod(window.client, testUrl, options)
-          .then(response => {
-            console.log('API test successful:', response);
-            resolve(response);
-          })
-          .catch(error => {
-            console.error('API test failed:', error);
-            reject(error);
-          });
-      } else {
-        // Fallback to rate-limited fetch API if client.request is not available
-        const fetchMethod = window.apiUtils?.fetch || fetch;
-        const options = {
-          method: 'GET',
-          headers: {
-            'Authorization': 'Basic ' + authToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        };
-        
-        fetchMethod(testUrl, options)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`API test failed: ${response.status} ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then(data => {
-          console.log('API test successful:', data);
-          resolve(data);
-        })
-        .catch(error => {
-          console.error('API test failed:', error);
-          reject(error);
-        });
-      }
-    });
-  }
-  
-  // Display error in the UI
-  function displayErrorInUI(message) {
-    // Add API URL to error message if it's an API error
-    let displayMessage = message;
-    if (message.includes('API') || message.includes('searching')) {
-      displayMessage += `<br><br>API URL: ${app.apiUrl || 'Not configured'}`;
-    }
-    
-    // Show error message in active tab OR in any available results container
-    const activeTab = document.querySelector('.tab-pane.active');
-    if (!activeTab) {
-      console.error('No active tab found to display error');
-      
-      // Try to find any results container as fallback
-      const usersResults = document.getElementById('usersResults');
-      const requestersResults = document.getElementById('requestersResults');
-      
-      const fallbackContainer = usersResults || requestersResults;
-      if (fallbackContainer) {
-        fallbackContainer.innerHTML = `
-          <div class="alert alert-danger mt-3">
-            ${displayMessage}
-          </div>
-        `;
-        return;
-      }
-      
-      console.error('No container found to display error');
-      return;
-    }
-    
-    // First try the specific results-container
-    let resultsContainer = activeTab.querySelector('.results-container');
-    
-    // If not found, try to get the tab-specific results container
-    if (!resultsContainer) {
-      const activeTabId = activeTab.id;
-      if (activeTabId === 'users-tab-pane') {
-        resultsContainer = document.getElementById('usersResults');
-      } else if (activeTabId === 'requesters-tab-pane') {
-        resultsContainer = document.getElementById('requestersResults');
-      }
-    }
-    
-    // If we still don't have a container, try one last approach
-    if (!resultsContainer) {
-      resultsContainer = document.getElementById('usersResults') || 
-                         document.getElementById('requestersResults');
-    }
-    
-    if (!resultsContainer) {
-      console.error('No results container found to display error');
-      return;
-    }
-    
-    resultsContainer.innerHTML = `
-      <div class="alert alert-danger mt-3">
-        ${displayMessage}
-      </div>
-    `;
-  }
-  
-  // Update the application title displayed on the page
-  function updateAppTitle(title) {
-    const titleElement = document.getElementById('appTitle');
-    if (titleElement) {
-      // Make sure we don't use null/undefined title, use configured default or fallback
-      const displayTitle = title || app.appTitle || 'Change Management';
-      titleElement.textContent = displayTitle;
-      console.log('Application title updated to:', displayTitle);
-    } else {
-      console.error('Title element not found in the DOM');
-    }
-  }
-
-  // Render sample users data for testing
-  function renderSampleUsers(query) {
-    console.log('Rendering sample users for: ' + query);
-    
-    // Generate fake users based on query
-    const sampleUsers = [
-      {
-        first_name: 'John',
-        last_name: 'Smith',
-        email: 'john.smith@example.com',
-        active: true,
-        department: 'IT'
-      },
-      {
-        first_name: 'Jane',
-        last_name: 'Doe',
-        email: 'jane.doe@example.com',
-        active: true,
-        department: 'HR'
-      },
-      {
-        first_name: 'Alex',
-        last_name: 'Johnson',
-        email: 'alex.johnson@example.com',
-        active: true,
-        department: 'Finance'
-      }
-    ];
-    
-    // Check if query matches any sample users
-    const filteredUsers = sampleUsers.filter(user => {
-      const fullName = (user.first_name + ' ' + user.last_name).toLowerCase();
-      const email = user.email.toLowerCase();
-      const searchTerm = query.toLowerCase();
-      
-      return fullName.includes(searchTerm) || email.includes(searchTerm);
-    });
-    
-    renderResults('users', filteredUsers);
-    toggleSpinner(false);
-    
-    return filteredUsers;
-  }
-
-  // Intentionally empty for readability
   
   // Integration with change-form.js
   function integrateWithChangeForm() {
@@ -2568,452 +2022,11 @@ function runDiagnostics() {
       window.app = {};
     }
     
-    // Make our search functions available on the app object
-    window.app.searchUsers = function(query) {
-      console.log('app.searchUsers called with query:', query);
-      
-      // Show loading spinner
-      toggleSpinner(true);
-      
-      // Return a promise for change-form.js to use
-      return new Promise((resolve, reject) => {
-        try {
-          // Encode the query for API search - include email in search fields
-          const queryString = `~[first_name|last_name|email]:'${query}'`;
-          const encodedQuery = encodeURIComponent(queryString);
-          const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
-          
-          // Create Basic Auth token
-          const authToken = btoa(app.apiKey + ':X');
-          
-          // Make the API call
-          fetch(apiUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': 'Basic ' + authToken,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          })
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-          })
-          .then(data => {
-            console.log('API response:', data);
-            
-            if (data && data.agents && Array.isArray(data.agents)) {
-              console.log(`Found ${data.agents.length} agents matching the query`);
-              
-              // Before returning to change-form.js, we can manually update the agent/user search results
-              // This ensures they appear in the right place even if change-form.js has issues
-              const agentResults = document.getElementById('agentResults');
-              if (agentResults) {
-                // Directly render the results to the correct container
-                renderSearchResultsDirectly('agent', data.agents, agentResults);
-              }
-              
-              // Return the agents array to change-form.js
-              resolve(data.agents);
-            } else {
-              console.warn('Response contained no agents array:', data);
-              
-              // Check if data is in a different format
-              if (data && Array.isArray(data)) {
-                console.log('Data appears to be an array directly, using as agents');
-                
-                // Direct render again
-                const agentResults = document.getElementById('agentResults');
-                if (agentResults) {
-                  renderSearchResultsDirectly('agent', data, agentResults);
-                }
-                
-                resolve(data);
-              } else {
-                // Show no results message
-                const agentResults = document.getElementById('agentResults');
-                if (agentResults) {
-                  agentResults.innerHTML = '<div class="alert alert-info">No agents found</div>';
-                }
-                
-                resolve([]);
-              }
-            }
-          })
-          .catch(function(error) {
-            console.error('API request failed:', error);
-            
-            // Show error in the results container
-            const agentResults = document.getElementById('agentResults');
-            if (agentResults) {
-              agentResults.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            }
-            
-            reject(error);
-          })
-          .finally(function() {
-            toggleSpinner(false);
-          });
-        } catch (error) {
-          console.error('Error in search:', error);
-          toggleSpinner(false);
-          reject(error);
-        }
-      });
-    };
-    
-    // Similar function for requesters
-    window.app.searchRequesters = function(query) {
-      console.log('app.searchRequesters called with query:', query);
-      
-      // Show loading spinner
-      toggleSpinner(true);
-      
-      // Return a promise for change-form.js to use
-      return new Promise((resolve, reject) => {
-        try {
-          // Encode the query for API search - include email in search fields
-          const queryString = `~[first_name|last_name|email]:'${query}'`;
-          const encodedQuery = encodeURIComponent(queryString);
-          const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
-          
-          // Create Basic Auth token
-          const authToken = btoa(app.apiKey + ':X');
-          
-          // Make the API call
-          fetch(apiUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': 'Basic ' + authToken,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          })
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-          })
-          .then(data => {
-            console.log('API response:', data);
-            
-            if (data && data.requesters && Array.isArray(data.requesters)) {
-              console.log(`Found ${data.requesters.length} requesters matching the query`);
-              
-              // Before returning to change-form.js, we can manually update the requester search results
-              // This ensures they appear in the right place even if change-form.js has issues
-              const requesterResults = document.getElementById('requesterResults');
-              if (requesterResults) {
-                // Directly render the results to the correct container
-                renderSearchResultsDirectly('requester', data.requesters, requesterResults);
-              }
-              
-              // Return the requesters array to change-form.js
-              resolve(data.requesters);
-            } else {
-              console.warn('Response contained no requesters array:', data);
-              
-              // Check if data is in a different format
-              if (data && Array.isArray(data)) {
-                console.log('Data appears to be an array directly, using as requesters');
-                
-                // Direct render again
-                const requesterResults = document.getElementById('requesterResults');
-                if (requesterResults) {
-                  renderSearchResultsDirectly('requester', data, requesterResults);
-                }
-                
-                resolve(data);
-              } else {
-                // Show no results message
-                const requesterResults = document.getElementById('requesterResults');
-                if (requesterResults) {
-                  requesterResults.innerHTML = '<div class="alert alert-info">No requesters found</div>';
-                }
-                
-                resolve([]);
-              }
-            }
-          })
-          .catch(function(error) {
-            console.error('API request failed:', error);
-            
-            // Show error in the results container
-            const requesterResults = document.getElementById('requesterResults');
-            if (requesterResults) {
-              requesterResults.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            }
-            
-            reject(error);
-          })
-          .finally(function() {
-            toggleSpinner(false);
-          });
-        } catch (error) {
-          console.error('Error in search:', error);
-          toggleSpinner(false);
-          reject(error);
-        }
-      });
-    };
-    
-    // Helper function to directly render search results to the correct container
-    function renderSearchResultsDirectly(type, results, container) {
-      if (!container) {
-        console.error(`Container for ${type} not found`);
-        return;
-      }
-      
-      if (!results || results.length === 0) {
-        container.innerHTML = '<div class="alert alert-info">No results found</div>';
-        return;
-      }
-      
-      let content = '<div class="list-group search-results-list">';
-      
-      results.forEach(user => {
-        const displayName = user.first_name && user.last_name 
-          ? `${user.first_name} ${user.last_name}`
-          : (user.name || 'Unknown User');
-        
-        // Get location name if available
-        const locationName = user.location_name || '';
-        // Get department name from either department_names array or department field
-        const departmentName = user.department_names && user.department_names.length ? 
-                              user.department_names.join(', ') : 
-                              (user.department || '');
-        // Get job title if available
-        const jobTitle = user.job_title || '';
-        
-        // Ensure we have safe values for data attributes
-        const safeEmail = (user.email || '').replace(/"/g, '&quot;');
-        const safeDept = departmentName.replace(/"/g, '&quot;');
-        const safeLocation = locationName.replace(/"/g, '&quot;');
-        const safeJobTitle = jobTitle.replace(/"/g, '&quot;');
-          
-        content += `
-          <a href="#" class="list-group-item list-group-item-action" 
-             data-id="${user.id}" 
-             data-name="${displayName.replace(/"/g, '&quot;')}" 
-             data-email="${safeEmail}" 
-             data-department="${safeDept}"
-             data-location="${safeLocation}"
-             data-job-title="${safeJobTitle}"
-             onclick="selectUser('${type}', this.dataset)">
-            <div class="d-flex justify-content-between align-items-start">
-              <div class="user-info">
-                <h5 class="mb-1 user-name">${displayName}</h5>
-                <div class="text-primary user-email">${safeEmail}</div>
-                <div class="user-details small">
-                  ${departmentName ? `<span class="badge badge-light mr-2">Dept: ${departmentName}</span>` : ''}
-                  ${locationName ? `<span class="badge badge-light mr-2">Location: ${locationName}</span>` : ''}
-                  ${jobTitle ? `<span class="badge badge-light mr-2">Title: ${jobTitle}</span>` : ''}
-                </div>
-              </div>
-              <span class="badge badge-primary badge-select">Select</span>
-            </div>
-          </a>
-        `;
-      });
-      
-      content += '</div>';
-      
-      // Add custom CSS for the search results
-      if (!document.getElementById('search-results-styles')) {
-        const style = document.createElement('style');
-        style.id = 'search-results-styles';
-        style.textContent = `
-          .search-results-list {
-            max-height: 300px;
-            overflow-y: auto;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-          }
-          .badge-select {
-            padding: 5px 8px;
-            margin-top: 5px;
-          }
-          .user-details {
-            margin-top: 5px;
-            line-height: 1.8;
-          }
-          .user-email {
-            font-weight: 500;
-          }
-        `;
-        document.head.appendChild(style);
-      }
-      
-      container.innerHTML = content;
-      
-      // Make the container visible
-      container.style.display = 'block';
-      
-      // Also add code to replace the selectUser function if needed
-      if (!window.selectUser) {
-        window.selectUser = function(type, userData) {
-          console.log(`Selecting ${type} with data:`, userData);
-          
-          // Get the container for the selected user
-          const selectedContainer = document.getElementById(`selected${type.charAt(0).toUpperCase() + type.slice(1)}`);
-          if (!selectedContainer) {
-            console.error(`Container for selected ${type} not found`);
-            return;
-          }
-          
-          // Show the selected container
-          selectedContainer.classList.remove('d-none');
-          
-          // Update elements with user data
-          const nameElement = document.getElementById(`${type}Name`);
-          const emailElement = document.getElementById(`${type}Email`);
-          const deptElement = document.getElementById(`${type}Dept`);
-          
-          if (nameElement) nameElement.textContent = userData.name;
-          if (emailElement) emailElement.textContent = userData.email;
-          
-          // Update department and add location if available
-          if (deptElement) {
-            let details = [];
-            
-            if (userData.department) {
-              details.push(`Department: ${userData.department}`);
-            }
-            
-            if (userData.location) {
-              details.push(`Location: ${userData.location}`);
-            }
-            
-            if (userData.jobTitle) {
-              details.push(`Title: ${userData.jobTitle}`);
-            }
-            
-            deptElement.innerHTML = details.join(' | ');
-          }
-          
-          // Make the selected user card more prominent
-          const selectedCard = selectedContainer.querySelector('.card');
-          if (selectedCard) {
-            selectedCard.style.transition = 'all 0.2s ease';
-            selectedCard.style.boxShadow = '0 0 8px rgba(0, 123, 255, 0.5)';
-            setTimeout(() => {
-              selectedCard.style.boxShadow = '';
-            }, 2000);
-          }
-          
-          // Clear search results
-          const resultsContainer = document.getElementById(`${type}Results`);
-          if (resultsContainer) {
-            resultsContainer.innerHTML = '';
-            resultsContainer.style.display = 'none';
-          }
-          
-          // Also clear the search input
-          const searchInput = document.getElementById(`${type}Search`);
-          if (searchInput) {
-            searchInput.value = userData.name;
-          }
-        };
-      }
-    }
+    // Make the searchUsers and searchRequesters functions available on the app object
+    window.app.searchUsers = searchUsers;
+    window.app.searchRequesters = searchRequesters;
     
     // Also make our local render function available if needed
     window.app.renderResults = renderResults;
   }
-  
-  // Initialize the integration
-  integrateWithChangeForm();
-  
-  // Add real-time search functionality
-  document.addEventListener('DOMContentLoaded', function() {
-    console.log('Adding real-time search functionality');
-    
-    // Setup keyup search for agent input
-    const agentSearch = document.getElementById('agentSearch');
-    if (agentSearch) {
-      let agentSearchTimeout = null;
-      
-      agentSearch.addEventListener('keyup', function(e) {
-        // Skip if Enter key was pressed (already handled in HTML)
-        if (e.key === 'Enter') return;
-        
-        // Clear previous timeout
-        if (agentSearchTimeout) {
-          clearTimeout(agentSearchTimeout);
-        }
-        
-        // Set a new timeout for search after typing stops
-        const searchTerm = this.value.trim();
-        if (searchTerm && searchTerm.length >= 2) {
-          agentSearchTimeout = setTimeout(() => {
-            console.log('Triggering search for agent:', searchTerm);
-            if (window.searchUsers) {
-              window.searchUsers('agent');
-            } else if (window.app && window.app.searchUsers) {
-              const agentResults = document.getElementById('agentResults');
-              
-              // Show loading spinner in results container
-              if (agentResults) {
-                agentResults.innerHTML = '<div class="text-center p-2"><div class="spinner-border spinner-border-sm text-primary" role="status"><span class="sr-only">Loading...</span></div></div>';
-                agentResults.style.display = 'block';
-              }
-              
-              window.app.searchUsers(searchTerm)
-                .then(results => {
-                  console.log(`Found ${results.length} agent results for real-time search`);
-                })
-                .catch(error => {
-                  console.error('Error in real-time agent search:', error);
-                });
-            }
-          }, 300); // 300ms delay
-        }
-      });
-    }
-    
-    // Setup keyup search for requester input
-    const requesterSearch = document.getElementById('requesterSearch');
-    if (requesterSearch) {
-      let requesterSearchTimeout = null;
-      
-      requesterSearch.addEventListener('keyup', function(e) {
-        // Skip if Enter key was pressed (already handled in HTML)
-        if (e.key === 'Enter') return;
-        
-        // Clear previous timeout
-        if (requesterSearchTimeout) {
-          clearTimeout(requesterSearchTimeout);
-        }
-        
-        // Set a new timeout for search after typing stops
-        const searchTerm = this.value.trim();
-        if (searchTerm && searchTerm.length >= 2) {
-          requesterSearchTimeout = setTimeout(() => {
-            console.log('Triggering search for requester:', searchTerm);
-            if (window.searchRequesters) {
-              window.searchRequesters('requester');
-            } else if (window.app && window.app.searchRequesters) {
-              const requesterResults = document.getElementById('requesterResults');
-              
-              // Show loading spinner in results container
-              if (requesterResults) {
-                requesterResults.innerHTML = '<div class="text-center p-2"><div class="spinner-border spinner-border-sm text-primary" role="status"><span class="sr-only">Loading...</span></div></div>';
-                requesterResults.style.display = 'block';
-              }
-              
-              window.app.searchRequesters(searchTerm)
-                .then(results => {
-                  console.log(`Found ${results.length} requester results for real-time search`);
-                })
-                .catch(error => {
-                  console.error('Error in real-time requester search:', error);
-                });
-            }
-          }, 300); // 300ms delay
-        }
-      });
-    }
-  });
 })();
