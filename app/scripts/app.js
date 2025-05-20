@@ -441,71 +441,8 @@ function createFakeClient() {
       return;
     }
 
-    // Try to load app settings first, then fall back to iparams if needed
-    if (client.request && typeof client.request.get === 'function') {
-      console.log('Attempting to load configuration from app settings...');
-      
-      client.request.get('https://{{iparam.api_url}}/api/app/settings')
-        .then(function (data) {
-          try {
-            const appSettings = JSON.parse(data.response);
-            console.log('App settings loaded successfully');
-            
-            // Process API URL from app settings
-            if (appSettings.api_url) {
-              let apiUrl = appSettings.api_url;
-              
-              // Process the API URL (add https:// if needed)
-              if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-                apiUrl = 'https://' + apiUrl;
-                console.log('Added https:// prefix to API URL:', apiUrl);
-              } else if (apiUrl.startsWith('http://')) {
-                apiUrl = apiUrl.replace('http://', 'https://');
-                console.log('Converted HTTP to HTTPS for API URL:', apiUrl);
-              }
-              
-              // Remove trailing slash if present
-              if (apiUrl.endsWith('/')) {
-                apiUrl = apiUrl.slice(0, -1);
-              }
-              
-              app.apiUrl = apiUrl;
-            }
-            
-            // Process API key from app settings
-            if (appSettings.api_key) {
-              app.apiKey = appSettings.api_key;
-            }
-            
-            // Set app title from app settings
-            if (appSettings.app_title) {
-              app.appTitle = appSettings.app_title;
-              updateAppTitle(app.appTitle);
-            }
-            
-            console.log('Configuration loaded from app settings:', {
-              apiUrl: app.apiUrl,
-              hasApiKey: !!app.apiKey,
-              appTitle: app.appTitle
-            });
-            
-            // If we're missing essential config, fall back to iparams
-            if (!app.apiUrl || !app.apiKey) {
-              console.warn('Incomplete app settings, falling back to iparams...');
-              loadFromIparams();
-            }
-          } catch (error) {
-            console.error('Error parsing app settings:', error);
-            loadFromIparams();
-          }
-        })
-        .catch(function (error) {
-          console.error('Error loading app settings:', error);
-          loadFromIparams();
-        });
-    } else {
-      loadFromIparams();
-    }
+    // Load configuration directly from iparams
+    loadFromIparams();
     
     // Helper function to load from iparams
     function loadFromIparams() {
@@ -545,6 +482,14 @@ function createFakeClient() {
             app.apiUrl = apiUrl;
             app.apiKey = apiKey;
             console.log('API configuration loaded successfully:', { apiUrl: app.apiUrl, hasApiKey: !!app.apiKey });
+            
+            // Set up API endpoints using the loaded URL
+            app.endpoints = {
+              users: `${app.apiUrl}/api/v2/agents`,
+              requesters: `${app.apiUrl}/api/v2/requesters`,
+              groups: `${app.apiUrl}/api/v2/groups`
+            };
+            console.log('API endpoints configured:', app.endpoints);
           } else {
             console.warn('Missing API URL or key in configuration');
             // Still continue processing other parameters
