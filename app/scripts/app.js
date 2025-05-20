@@ -13,9 +13,9 @@ window.addEventListener('securitypolicyviolation', function(e) {
 // Fix for local development environment
 (function() {
   // Check if we're in a local development environment
-  const isLocalDev = window.location.href.includes('dev=true') && 
-    (window.location.href.includes('localhost') || 
-     window.location.hostname.includes('freshservice.com'));
+  const isLocalDev = window.location.href.includes('dev=true') || 
+    window.location.href.includes('localhost') || 
+    window.location.hostname.includes('127.0.0.1');
   
   if (isLocalDev) {
     console.log("Development environment detected - applying protocol fixes");
@@ -41,23 +41,51 @@ window.addEventListener('securitypolicyviolation', function(e) {
     };
   }
   
-  // Add debug function to check URL parameters
+  // Parse URL parameters for configuration
   const urlParams = new URLSearchParams(window.location.search);
   const forceDevMode = urlParams.get('dev') === 'true';
   const apiUrlParam = urlParams.get('api_url');
   const apiKeyParam = urlParams.get('api_key');
   const appTitleParam = urlParams.get('app_title');
   
-  if (forceDevMode) {
-    console.log('Development mode forced via URL parameter');
-    // Store parameters from URL if provided
-    if (apiUrlParam || apiKeyParam || appTitleParam) {
-      console.log('Configuration parameters detected in URL');
-      window.__DEV_PARAMS__ = window.__DEV_PARAMS__ || {};
-      if (apiUrlParam) window.__DEV_PARAMS__.api_url = apiUrlParam;
-      if (apiKeyParam) window.__DEV_PARAMS__.api_key = apiKeyParam;
-      if (appTitleParam) window.__DEV_PARAMS__.app_title = appTitleParam;
-    }
+  // Store parameters from URL if provided
+  window.__DEV_PARAMS__ = window.__DEV_PARAMS__ || {};
+  
+  if (apiUrlParam) {
+    console.log('API URL parameter found:', apiUrlParam);
+    window.__DEV_PARAMS__.api_url = apiUrlParam;
+  }
+  
+  if (apiKeyParam) {
+    console.log('API Key parameter found (value hidden for security)');
+    window.__DEV_PARAMS__.api_key = apiKeyParam;
+  }
+  
+  if (appTitleParam) {
+    console.log('App Title parameter found:', appTitleParam);
+    window.__DEV_PARAMS__.app_title = appTitleParam;
+  }
+  
+  // Add dev mode status to window object
+  window.__DEV_MODE__ = isLocalDev || forceDevMode;
+  
+  if (window.__DEV_MODE__) {
+    console.log('Development mode active');
+    // Add a visual indicator for dev mode
+    document.addEventListener('DOMContentLoaded', function() {
+      const devBadge = document.createElement('div');
+      devBadge.style.position = 'fixed';
+      devBadge.style.top = '5px';
+      devBadge.style.right = '5px';
+      devBadge.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
+      devBadge.style.color = 'white';
+      devBadge.style.padding = '3px 6px';
+      devBadge.style.fontSize = '10px';
+      devBadge.style.borderRadius = '3px';
+      devBadge.style.zIndex = '9999';
+      devBadge.textContent = 'DEV MODE';
+      document.body.appendChild(devBadge);
+    });
   }
 })();
 
@@ -178,24 +206,165 @@ function createFakeClient() {
   function createDevClient() {
     console.log('Creating real dev client for sandbox testing');
     
+    // Try to load saved iparams from localStorage first
+    let savedIparams = null;
+    try {
+      const savedData = localStorage.getItem('freshservice_change_management_iparams');
+      if (savedData) {
+        savedIparams = JSON.parse(savedData);
+        console.log('Found saved iparams in localStorage:', savedIparams);
+      }
+    } catch (e) {
+      console.error('Error reading from localStorage:', e);
+    }
+    
     return {
       iparams: {
         get: function() {
           console.log('Dev client: iparams.get called');
           
-          // Return your sandbox credentials
-          return Promise.resolve({
-            api_url: window.__DEV_PARAMS__?.api_url || 'https://example.freshservice.com',
-            api_key: window.__DEV_PARAMS__?.api_key || 'dev-placeholder-key'
-          });
+          // Use URL parameters first if provided
+          if (window.__DEV_PARAMS__?.api_url || window.__DEV_PARAMS__?.api_key) {
+            console.log('Using configuration from URL parameters');
+            const params = {
+              api_url: window.__DEV_PARAMS__?.api_url || savedIparams?.api_url || 'example.freshservice.com',
+              api_key: window.__DEV_PARAMS__?.api_key || savedIparams?.api_key || 'dev-placeholder-key',
+              app_title: window.__DEV_PARAMS__?.app_title || savedIparams?.app_title || 'Change Management',
+              change_types: window.__DEV_PARAMS__?.change_types || savedIparams?.change_types || [
+                "Standard Change",
+                "Emergency Change",
+                "Non-Standard Change"
+              ]
+            };
+            
+            // Save to localStorage for future use
+            try {
+              localStorage.setItem('freshservice_change_management_iparams', JSON.stringify(params));
+              console.log('Saved iparams to localStorage');
+            } catch (e) {
+              console.error('Error saving to localStorage:', e);
+            }
+            
+            return Promise.resolve(params);
+          }
+          
+          // Use saved parameters if available
+          if (savedIparams) {
+            console.log('Using saved iparams from localStorage');
+            return Promise.resolve(savedIparams);
+          }
+          
+          // If no saved parameters, show a configuration form instead of prompts
+          if (!savedIparams) {
+            console.log('No saved parameters, using default configuration');
+            // Create default configuration
+            const params = {
+              api_url: 'example.freshservice.com',
+              api_key: 'dev-placeholder-key',
+              app_title: 'Change Management',
+              change_types: [
+                "Standard Change",
+                "Emergency Change",
+                "Non-Standard Change"
+              ]
+            };
+            
+            // Create configuration UI on DOM load
+            document.addEventListener('DOMContentLoaded', function() {
+              // Check if config form already exists
+              if (document.getElementById('dev-config-form')) {
+                return;
+              }
+              
+              const container = document.querySelector('.container') || document.body;
+              
+              // Create config form element
+              const configForm = document.createElement('div');
+              configForm.id = 'dev-config-form';
+              configForm.style.backgroundColor = '#f8f9fa';
+              configForm.style.padding = '15px';
+              configForm.style.marginBottom = '20px';
+              configForm.style.border = '1px solid #ddd';
+              configForm.style.borderRadius = '5px';
+              
+              configForm.innerHTML = `
+                <h4>Development Configuration</h4>
+                <p>Enter your Freshservice settings below to test the app:</p>
+                <div style="margin-bottom:10px">
+                  <label for="dev-api-url" style="display:block;font-weight:bold">Freshservice URL:</label>
+                  <input type="text" id="dev-api-url" placeholder="yourcompany.freshservice.com" style="width:100%;padding:5px" value="${params.api_url}">
+                </div>
+                <div style="margin-bottom:10px">
+                  <label for="dev-api-key" style="display:block;font-weight:bold">API Key:</label>
+                  <input type="password" id="dev-api-key" placeholder="Enter your API key" style="width:100%;padding:5px" value="${params.api_key}">
+                </div>
+                <div style="margin-bottom:10px">
+                  <label for="dev-app-title" style="display:block;font-weight:bold">App Title:</label>
+                  <input type="text" id="dev-app-title" placeholder="Change Management" style="width:100%;padding:5px" value="${params.app_title}">
+                </div>
+                <div style="margin-top:15px">
+                  <button id="dev-save-config" style="padding:8px 15px;background:#4CAF50;color:white;border:none;border-radius:4px;cursor:pointer">Save Settings</button>
+                </div>
+              `;
+              
+              // Insert at beginning of container
+              container.insertBefore(configForm, container.firstChild);
+              
+              // Add event listener to save button
+              document.getElementById('dev-save-config').addEventListener('click', function() {
+                const savedConfig = {
+                  api_url: document.getElementById('dev-api-url').value || params.api_url,
+                  api_key: document.getElementById('dev-api-key').value || params.api_key,
+                  app_title: document.getElementById('dev-app-title').value || params.app_title,
+                  change_types: params.change_types
+                };
+                
+                // Save to localStorage
+                try {
+                  localStorage.setItem('freshservice_change_management_iparams', JSON.stringify(savedConfig));
+                  console.log('Saved configuration to localStorage');
+                  
+                  // Reload the page to apply settings
+                  location.reload();
+                } catch (e) {
+                  console.error('Error saving to localStorage:', e);
+                  // Show error in the form
+                  const errorMsg = document.createElement('div');
+                  errorMsg.style.color = 'red';
+                  errorMsg.style.marginTop = '10px';
+                  errorMsg.textContent = 'Failed to save settings: ' + e.message;
+                  configForm.appendChild(errorMsg);
+                }
+              });
+            });
+            
+            return Promise.resolve(params);
+          }
         }
       },
       request: {
         get: function(url) {
           console.log('Dev client: Making real API call to:', url);
           
-          // Get API key from dev params
-          const apiKey = window.__DEV_PARAMS__?.api_key || 'dev-placeholder-key';
+          // Get API key from iparams in localStorage or dev params
+          let apiKey = window.__DEV_PARAMS__?.api_key;
+          
+          // If not in URL params, try localStorage
+          if (!apiKey) {
+            try {
+              const savedData = localStorage.getItem('freshservice_change_management_iparams');
+              if (savedData) {
+                const savedIparams = JSON.parse(savedData);
+                apiKey = savedIparams.api_key;
+              }
+            } catch (e) {
+              console.error('Error reading API key from localStorage:', e);
+            }
+          }
+          
+          // Default if still not found
+          apiKey = apiKey || 'dev-placeholder-key';
+          
           const authToken = btoa(apiKey + ':X');
           
           // Make a real fetch call to the Freshservice API
@@ -234,18 +403,75 @@ function createFakeClient() {
   function initializeApp() {
     console.log('Initializing app...');
     
-    // For local development environment
-    const isLocalDev = window.location.href.includes('localhost') || window.location.hostname === '127.0.0.1';
-    if (isLocalDev) {
-      console.log('Local development environment detected');
-      
-      // Always use real API calls in development
-      console.log('Using real API calls in development');
+    // Check if we should use development mode
+    if (window.__DEV_MODE__) {
+      console.log('Development mode detected - using development client');
       const devClient = createDevClient();
       window.client = devClient;
       onClientReady(devClient);
+      
+      // Add a click handler to the dev badge to clear localStorage settings
+      document.addEventListener('DOMContentLoaded', function() {
+        const devBadge = document.querySelector('div[style*="DEV MODE"]');
+        if (devBadge) {
+          devBadge.style.cursor = 'pointer';
+          devBadge.title = 'Click to clear saved settings';
+          devBadge.addEventListener('click', function() {
+            localStorage.removeItem('freshservice_change_management_iparams');
+            
+            // Show notification instead of using alert
+            const notification = document.createElement('div');
+            notification.style.position = 'fixed';
+            notification.style.top = '40px';
+            notification.style.right = '10px';
+            notification.style.backgroundColor = '#4CAF50';
+            notification.style.color = 'white';
+            notification.style.padding = '10px';
+            notification.style.borderRadius = '4px';
+            notification.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+            notification.style.zIndex = '9999';
+            notification.textContent = 'Settings cleared. Reload page to enter new settings.';
+            
+            // Add close button
+            const closeBtn = document.createElement('span');
+            closeBtn.textContent = '✕';
+            closeBtn.style.marginLeft = '10px';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.onclick = function() {
+              document.body.removeChild(notification);
+            };
+            notification.appendChild(closeBtn);
+            
+            // Add reload button
+            const reloadBtn = document.createElement('button');
+            reloadBtn.textContent = 'Reload Now';
+            reloadBtn.style.marginLeft = '10px';
+            reloadBtn.style.border = '1px solid white';
+            reloadBtn.style.background = 'transparent';
+            reloadBtn.style.color = 'white';
+            reloadBtn.style.padding = '2px 5px';
+            reloadBtn.style.cursor = 'pointer';
+            reloadBtn.style.borderRadius = '3px';
+            reloadBtn.onclick = function() {
+              location.reload();
+            };
+            notification.appendChild(reloadBtn);
+            
+            // Auto-remove after 5 seconds
+            document.body.appendChild(notification);
+            setTimeout(function() {
+              if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+              }
+            }, 5000);
+          });
+        }
+      });
+      
       return;
     }
+    
+    // Standard Freshworks app initialization for production
     
     // Check if we're in Freshworks environment (with app loader)
     if (typeof FreshworksWidget !== 'undefined' || 
