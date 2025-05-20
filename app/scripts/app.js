@@ -1880,9 +1880,13 @@ function runDiagnostics() {
       const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
       console.log('Request URL:', apiUrl);
       
-      // Make the API request
-      console.log('Making API request to get agents...');
-      window.client.request.get(apiUrl, options)
+      // Make the API request with rate limiting
+      console.log('Making rate-limited API request to get agents...');
+      
+      // Use apiUtils for rate limiting if available, otherwise fall back to normal request
+      const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
+      
+      requestMethod(window.client, apiUrl, options)
         .then(function(response) {
           console.log('API response received, status:', response.status);
           console.log('Full response object:', JSON.stringify(response, null, 2));
@@ -2095,17 +2099,19 @@ function runDiagnostics() {
         const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
-        // Try to use client.request if available
-        if (window.client && window.client.request) {
-          const options = {
-            headers: {
-              'Authorization': 'Basic ' + authToken,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          };
-          
-          window.client.request.get(apiUrl, options)
+                  // Try to use rate-limited client.request if available
+          if (window.client && window.client.request) {
+            const options = {
+              headers: {
+                'Authorization': 'Basic ' + authToken,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            };
+            
+            // Use apiUtils for rate limiting if available
+            const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
+            requestMethod(window.client, apiUrl, options)
             .then(response => {
               console.log('Client request response:', response);
               
@@ -2151,15 +2157,18 @@ function runDiagnostics() {
               toggleSpinner(false);
             });
         } else {
-          // Fallback to fetch if client.request is not available
-          fetch(apiUrl, {
+          // Fallback to rate-limited fetch if client.request is not available
+          const fetchMethod = window.apiUtils?.fetch || fetch;
+          const options = {
             method: 'GET',
             headers: {
               'Authorization': 'Basic ' + authToken,
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             }
-          })
+          };
+          
+          fetchMethod(apiUrl, options)
           .then(response => {
             if (!response.ok) {
               throw new Error(`API request failed: ${response.status} ${response.statusText}`);
@@ -2303,9 +2312,13 @@ function runDiagnostics() {
       const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
       console.log('Request URL:', apiUrl);
       
-      // Make the API request
-      console.log('Making API request to get requesters...');
-      window.client.request.get(apiUrl, options)
+      // Make the API request with rate limiting
+      console.log('Making rate-limited API request to get requesters...');
+      
+      // Use apiUtils for rate limiting if available, otherwise fall back to normal request
+      const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
+      
+      requestMethod(window.client, apiUrl, options)
         .then(function(response) {
           console.log('API response received, status:', response.status);
           console.log('Full response object:', JSON.stringify(response, null, 2));
@@ -2518,15 +2531,78 @@ function runDiagnostics() {
         const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
-        // Make the API call
-        fetch(apiUrl, {
+        // Try to use rate-limited client.request if available
+        if (window.client && window.client.request) {
+          const options = {
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          };
+          
+          // Use apiUtils for rate limiting if available
+          const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
+          requestMethod(window.client, apiUrl, options)
+            .then(response => {
+              console.log('Client request response:', response);
+              
+              // Parse the response which could be in different formats
+              let data;
+              if (typeof response.response === 'string') {
+                data = JSON.parse(response.response);
+              } else if (typeof response.response === 'object') {
+                data = response.response;
+              } else {
+                data = response;
+              }
+              
+              if (data && data.requesters && Array.isArray(data.requesters)) {
+                console.log(`Found ${data.requesters.length} requesters matching the query`);
+                renderResults('requesters', data.requesters);
+                resolve(data.requesters);
+              } else {
+                console.warn('Response contained no requesters array:', data);
+                // Check if data is in a different format
+                if (data && Array.isArray(data)) {
+                  console.log('Data appears to be an array directly, using as requesters');
+                  renderResults('requesters', data);
+                  resolve(data);
+                } else {
+                  renderResults('requesters', []);
+                  resolve([]);
+                }
+              }
+            })
+            .catch(error => {
+              console.error('Client request error:', error);
+              
+              // Show detailed error message
+              const errorMessage = 'API request failed' + (error.message ? `: ${error.message}` : '');
+              showError(errorMessage);
+              
+              console.log('Falling back to sample data');
+              const sampleData = renderSampleRequesters(query);
+              resolve(sampleData);
+            })
+            .finally(() => {
+              toggleSpinner(false);
+            });
+          return;
+        }
+        
+        // Fallback to rate-limited fetch API if client.request is not available
+        const fetchMethod = window.apiUtils?.fetch || fetch;
+        const options = {
           method: 'GET',
           headers: {
             'Authorization': 'Basic ' + authToken,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           }
-        })
+        };
+        
+        fetchMethod(apiUrl, options)
         .then(response => {
           if (!response.ok) {
             throw new Error(`API request failed: ${response.status} ${response.statusText}`);
@@ -2885,7 +2961,7 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
       // Try to fetch a simple endpoint (just one agent)
       const testUrl = `${app.apiUrl}/api/v2/agents?per_page=1`;
       
-      // Use client.request when available, otherwise fall back to fetch
+      // Use rate-limited client.request when available, otherwise fall back to rate-limited fetch
       if (window.client && window.client.request) {
         const options = {
           headers: {
@@ -2895,7 +2971,10 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
           }
         };
         
-        window.client.request.get(testUrl, options)
+        // Use apiUtils for rate limiting if available
+        const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
+        
+        requestMethod(window.client, testUrl, options)
           .then(response => {
             console.log('API test successful:', response);
             resolve(response);
@@ -2905,15 +2984,18 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
             reject(error);
           });
       } else {
-        // Fallback to fetch API if client.request is not available
-        fetch(testUrl, {
+        // Fallback to rate-limited fetch API if client.request is not available
+        const fetchMethod = window.apiUtils?.fetch || fetch;
+        const options = {
           method: 'GET',
           headers: {
             'Authorization': 'Basic ' + authToken,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           }
-        })
+        };
+        
+        fetchMethod(testUrl, options)
         .then(response => {
           if (!response.ok) {
             throw new Error(`API test failed: ${response.status} ${response.statusText}`);

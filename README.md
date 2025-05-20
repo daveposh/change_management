@@ -95,7 +95,8 @@ For more information on the Freshservice API, refer to the [official documentati
 │   ├── index.html      # Main HTML template
 │   ├── scripts/        # JavaScript files
 │   │   ├── app.js      # Core app functionality
-│   │   └── change-form.js # Change form specific logic
+│   │   ├── change-form.js # Change form specific logic
+│   │   └── api-utils.js   # API rate limiting implementation
 │   └── styles/         # CSS styles
 ├── config/             # App configuration
 │   └── iparams.json    # Installation parameters definition
@@ -162,13 +163,25 @@ SOFTWARE.
 - [Bootstrap](https://getbootstrap.com/) - Used for UI components
 - [Freshworks App Development](https://developers.freshworks.com/) - Framework and guidelines
 
+## API Rate Limiting
+
+This app implements proper rate limiting for Freshservice API calls to adhere to the [Freshservice API rate limits](https://api.freshservice.com/#rate_limit). The rate limiting mechanism:
+
+1. Queues API requests and processes them according to Freshservice's rate limits
+2. Automatically adapts to rate limit information from API response headers
+3. Retries requests that exceed rate limits after appropriate wait times
+4. Provides transparent fallback mechanisms for different client configurations
+
+The implementation is in `app/scripts/api-utils.js` and is used throughout the application for all API calls.
+
 ## Known Issues and Future Improvements
 
-The following code improvements should be addressed before production deployment:
+The following code improvements have been addressed for production deployment:
 
 1. Reduce function complexity to meet Freshworks standards (several functions exceed the max complexity of 7)
-2. Replace direct API calls with client.request pattern
-3. Fix potential race conditions in asynchronous code
-4. Address deprecated API usage
+2. Replace direct API calls with client.request pattern ✓
+3. Fix potential race conditions in asynchronous code ✓
+4. Address deprecated API usage ✓
+5. Implement proper API rate limiting ✓
 
-For detailed information about these issues, run `fdk validate` to see the full list of warnings.
+For detailed information about any remaining issues, run `fdk validate` to see the full list of warnings.

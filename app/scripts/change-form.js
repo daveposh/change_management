@@ -365,6 +365,7 @@ function setupEventListeners() {
   const requesterSearchBtn = document.getElementById('requesterSearchBtn');
   const agentSearchBtn = document.getElementById('agentSearchBtn');
   
+  // Requester search button
   if (requesterSearchBtn) {
     requesterSearchBtn.onclick = function() {
       const query = document.getElementById('requesterSearch').value;
@@ -376,6 +377,7 @@ function setupEventListeners() {
     };
   }
   
+  // Agent search button
   if (agentSearchBtn) {
     agentSearchBtn.onclick = function() {
       const query = document.getElementById('agentSearch').value;
@@ -386,6 +388,88 @@ function setupEventListeners() {
       searchUsers('agent');
     };
   }
+  
+  // Set up enhanced search for requester
+  const requesterSearch = document.getElementById('requesterSearch');
+  if (requesterSearch) {
+    // Search on typing with a delay
+    let requesterSearchTimeout = null;
+    requesterSearch.addEventListener('keyup', function(e) {
+      // Skip if Enter key was pressed (handled by the onkeyup in HTML)
+      if (e.key === 'Enter') return;
+      
+      // Clear previous timeout
+      if (requesterSearchTimeout) {
+        clearTimeout(requesterSearchTimeout);
+      }
+      
+      // Set a new timeout for search after typing stops
+      const searchTerm = this.value.trim();
+      if (searchTerm && searchTerm.length >= 2) { 
+        requesterSearchTimeout = setTimeout(() => {
+          searchRequesters('requester');
+        }, 500); // 500ms delay
+      }
+    });
+    
+    // Add focus/blur handling to improve UX
+    requesterSearch.addEventListener('focus', function() {
+      const resultsContainer = document.getElementById('requesterResults');
+      if (resultsContainer && resultsContainer.innerHTML.trim() !== '') {
+        resultsContainer.style.display = 'block';
+      }
+    });
+  }
+  
+  // Set up enhanced search for agent
+  const agentSearch = document.getElementById('agentSearch');
+  if (agentSearch) {
+    // Search on typing with a delay
+    let agentSearchTimeout = null;
+    agentSearch.addEventListener('keyup', function(e) {
+      // Skip if Enter key was pressed (handled by the onkeyup in HTML)
+      if (e.key === 'Enter') return;
+      
+      // Clear previous timeout
+      if (agentSearchTimeout) {
+        clearTimeout(agentSearchTimeout);
+      }
+      
+      // Set a new timeout for search after typing stops
+      const searchTerm = this.value.trim();
+      if (searchTerm && searchTerm.length >= 2) {
+        agentSearchTimeout = setTimeout(() => {
+          searchUsers('agent');
+        }, 500); // 500ms delay
+      }
+    });
+    
+    // Add focus/blur handling to improve UX
+    agentSearch.addEventListener('focus', function() {
+      const resultsContainer = document.getElementById('agentResults');
+      if (resultsContainer && resultsContainer.innerHTML.trim() !== '') {
+        resultsContainer.style.display = 'block';
+      }
+    });
+  }
+  
+  // Close search results when clicking outside
+  document.addEventListener('click', function(e) {
+    const requesterSearch = document.getElementById('requesterSearch');
+    const agentSearch = document.getElementById('agentSearch');
+    const requesterResults = document.getElementById('requesterResults');
+    const agentResults = document.getElementById('agentResults');
+    
+    // Handle requester results
+    if (requesterResults && e.target !== requesterSearch && !requesterResults.contains(e.target)) {
+      requesterResults.style.display = 'none';
+    }
+    
+    // Handle agent results
+    if (agentResults && e.target !== agentSearch && !agentResults.contains(e.target)) {
+      agentResults.style.display = 'none';
+    }
+  });
 }
 
 // Fetch agent groups from Freshservice API
@@ -411,8 +495,10 @@ function fetchAgentGroups() {
   
   const url = window.app.endpoints.groups;
   
-  // Use client to make API call
-  client.request.get(url)
+  // Use rate-limited client to make API call
+  const requestMethod = window.apiUtils?.get || client.request.get.bind(client.request);
+  
+  requestMethod(client, url)
     .then(function(response) {
       if (response.status === 200) {
         const data = response.response;

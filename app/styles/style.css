@@ -230,11 +230,42 @@ body {
   border: 1px solid #e9ecef;
   border-radius: 4px;
   padding: 5px;
+  position: absolute;
+  background-color: white;
+  z-index: 1000;
+  width: 100%;
+  display: none;
+}
+
+.search-results:not(:empty) {
+  display: block;
+}
+
+.search-results .list-group-item {
+  padding: 8px 12px;
+  transition: background-color 0.2s;
+}
+
+.search-results .list-group-item:hover {
+  background-color: #f8f9fa;
+}
+
+.search-results .list-group-item-action:active {
+  background-color: #e9ecef;
 }
 
 /* Selected items */
 .selected-item .card {
   background-color: #f8f9fa;
+  transition: all 0.3s ease;
+}
+
+.selected-item .card-body {
+  padding: 0.75rem;
+}
+
+.selected-item .card:hover {
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
 }
 
 /* Implementation group dropdown */
