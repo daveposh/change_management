@@ -1187,7 +1187,10 @@ function runDiagnostics() {
                 </div>
                 <input type="text" id="configApiKey" class="form-control" placeholder="Your Freshservice API key">
               </div>
-              <button id="saveConfigBtn" class="btn btn-primary mt-2">Save Configuration</button>
+              <div class="mt-2">
+                <button id="saveConfigBtn" class="btn btn-primary">Save Configuration</button>
+                <button id="testConnectionBtn" class="btn btn-outline-info ml-2">Test Connection</button>
+              </div>
             </div>
           `;
           
@@ -1199,13 +1202,112 @@ function runDiagnostics() {
             promptElement.innerHTML = configPrompt;
             container.insertBefore(promptElement, container.firstChild);
             
-            // Add event listener to the save button
-            setTimeout(() => {
-              const saveBtn = document.getElementById('saveConfigBtn');
-              if (saveBtn) {
-                saveBtn.addEventListener('click', function() {
-                  const apiUrlInput = document.getElementById('configApiUrl');
-                  const apiKeyInput = document.getElementById('configApiKey');
+                          // Add event listeners to the buttons
+              setTimeout(() => {
+                // Add test connection button handler
+                const testConnectionBtn = document.getElementById('testConnectionBtn');
+                if (testConnectionBtn) {
+                  testConnectionBtn.addEventListener('click', function() {
+                    const apiUrlInput = document.getElementById('configApiUrl');
+                    const apiKeyInput = document.getElementById('configApiKey');
+                    
+                    if (apiUrlInput && apiKeyInput) {
+                      const apiUrl = apiUrlInput.value.trim();
+                      const apiKey = apiKeyInput.value.trim();
+                      
+                      if (apiUrl && apiKey) {
+                        // Show testing status
+                        testConnectionBtn.disabled = true;
+                        testConnectionBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Testing...';
+                        
+                        // Process API URL to ensure it has proper format
+                        let fullApiUrl = apiUrl;
+                        if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
+                          fullApiUrl = 'https://' + fullApiUrl;
+                        }
+                        
+                        // Temporarily set the app configuration
+                        const origApiUrl = app.apiUrl;
+                        const origApiKey = app.apiKey;
+                        
+                        app.apiUrl = fullApiUrl;
+                        app.apiKey = apiKey;
+                        
+                        // Test the connection
+                        testApiCredentials()
+                          .then(data => {
+                            // Success - show confirmation
+                            const successMsg = document.createElement('div');
+                            successMsg.className = 'alert alert-success mt-2';
+                            
+                            if (data && data.agents && data.agents.length > 0) {
+                              const agentName = `${data.agents[0].first_name} ${data.agents[0].last_name}`;
+                              successMsg.innerHTML = `Connection successful! Found agent: ${agentName}`;
+                            } else {
+                              successMsg.innerHTML = 'Connection successful! API credentials are valid.';
+                            }
+                            
+                            // Remove any existing messages
+                            const existingMessages = container.querySelectorAll('.alert');
+                            existingMessages.forEach(el => {
+                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
+                                el.remove();
+                              }
+                            });
+                            
+                            container.insertBefore(successMsg, promptElement.nextSibling);
+                          })
+                          .catch(error => {
+                            // Error - show warning
+                            const errorMsg = document.createElement('div');
+                            errorMsg.className = 'alert alert-danger mt-2';
+                            errorMsg.innerHTML = `Connection failed: ${error.message}`;
+                            
+                            // Remove any existing messages
+                            const existingMessages = container.querySelectorAll('.alert');
+                            existingMessages.forEach(el => {
+                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
+                                el.remove();
+                              }
+                            });
+                            
+                            container.insertBefore(errorMsg, promptElement.nextSibling);
+                          })
+                          .finally(() => {
+                            // Reset the app configuration
+                            app.apiUrl = origApiUrl;
+                            app.apiKey = origApiKey;
+                            
+                            // Reset button
+                            testConnectionBtn.disabled = false;
+                            testConnectionBtn.innerHTML = 'Test Connection';
+                          });
+                      } else {
+                        // Show error for missing fields
+                        const errorMsg = document.createElement('div');
+                        errorMsg.className = 'alert alert-danger mt-2';
+                        errorMsg.innerHTML = 'Please enter both domain and API key to test connection';
+                        
+                        // Remove any existing error messages
+                        const existingErrors = container.querySelectorAll('.alert-danger');
+                        existingErrors.forEach(el => {
+                          if (el.textContent.includes('Please enter both')) {
+                            el.remove();
+                          }
+                        });
+                        
+                        container.insertBefore(errorMsg, promptElement.nextSibling);
+                      }
+                    }
+                  });
+                }
+                
+                // Add save button handler
+                const saveBtn = document.getElementById('saveConfigBtn');
+                if (saveBtn) {
+                  saveBtn.addEventListener('click', function() {
+                    const apiUrlInput = document.getElementById('configApiUrl');
+                    const apiKeyInput = document.getElementById('configApiKey');
                   
                   if (apiUrlInput && apiKeyInput) {
                     const apiUrl = apiUrlInput.value.trim();
@@ -1346,6 +1448,24 @@ function runDiagnostics() {
     console.log('Event listeners setup complete');
   }
   
+  // Determine if search term is an advanced query or a simple search
+  function isAdvancedQuery(searchTerm) {
+    // Check for common advanced query patterns
+    return (
+      searchTerm.includes(':') || // Field specification
+      searchTerm.includes('AND ') || 
+      searchTerm.includes(' AND') || 
+      searchTerm.includes('OR ') || 
+      searchTerm.includes(' OR') || 
+      searchTerm.includes('(') || // Parentheses for grouping
+      searchTerm.includes(')') ||
+      searchTerm.includes('~[') || // Prefix search
+      searchTerm.includes('<') || // Less than
+      searchTerm.includes('>') || // Greater than
+      searchTerm.includes('!=')   // Not equal
+    );
+  }
+  
   // Perform search based on input
   function performSearch() {
     console.log('performSearch() called');
@@ -1367,7 +1487,24 @@ function runDiagnostics() {
     // Check if API URL and key are configured
     if (!app.apiUrl || !app.apiKey) {
       console.error('API configuration missing', { apiUrl: app.apiUrl, apiKeyExists: !!app.apiKey });
-      return showError('API configuration is missing. Please check app installation parameters from the admin settings.');
+      
+      // Show a more helpful error message with configuration instructions
+      const errorMessage = `
+        <strong>API Configuration Missing</strong>
+        <p>Please configure the app using one of these methods:</p>
+        <ol>
+          <li>Add URL parameters: <code>?api_url=yourdomain.freshservice.com&api_key=your_api_key</code></li>
+          <li>Use the Reset button to clear configuration and set it up again</li>
+          <li>Install the app properly through Freshservice Admin interface</li>
+        </ol>
+      `;
+      return showError(errorMessage);
+    }
+    
+    // Validate API URL format
+    if (!app.apiUrl.includes('.freshservice.com')) {
+      console.error('Invalid API URL format:', app.apiUrl);
+      return showError(`Invalid API URL format: ${app.apiUrl}<br>URL must include .freshservice.com domain`);
     }
     
     // Show loading spinner
@@ -1388,18 +1525,88 @@ function runDiagnostics() {
     const resultsContainer = document.getElementById(`${searchType}Results`);
     if (resultsContainer) {
       resultsContainer.innerHTML = '';
+      
+      // Add search status message
+      const statusMsg = document.createElement('div');
+      statusMsg.className = 'alert alert-info mt-2';
+      statusMsg.id = 'searchStatus';
+      
+      // Check if this is an advanced query
+      const isAdvanced = isAdvancedQuery(searchTerm);
+      
+      // Format the status message based on query type
+      if (isAdvanced) {
+        statusMsg.innerHTML = `
+          Executing advanced query for ${searchType}:<br>
+          <code class="text-dark bg-light p-1">${escapeHtml(searchTerm)}</code>
+        `;
+      } else {
+        statusMsg.innerHTML = `Searching for ${searchType} matching: <strong>${escapeHtml(searchTerm)}</strong>...`;
+      }
+      
+      resultsContainer.appendChild(statusMsg);
+      
     } else {
       console.error(`Results container '${searchType}Results' not found`);
       toggleSpinner(false);
       return showError('Results container not found');
     }
     
-    // Perform search based on active tab
-    if (searchType === 'users') {
-      searchUsers(searchTerm);
+    // Prepare the search query
+    let queryString;
+    
+    // Check if this is an advanced query
+    if (isAdvancedQuery(searchTerm)) {
+      // Use the search term directly as the query parameter
+      console.log('Using advanced query:', searchTerm);
+      queryString = searchTerm;
     } else {
-      searchRequesters(searchTerm);
+      // Build a simple query for first_name, last_name, or email
+      console.log('Using simple query with prefix search');
+      queryString = `~[first_name|last_name|email]:'${searchTerm}'`;
     }
+    
+    // Perform search based on active tab with the query
+    const searchPromise = searchType === 'users' ? 
+      searchUsers(queryString) : 
+      searchRequesters(queryString);
+    
+    // Add a timeout to detect long-running searches
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => {
+        // Check if the spinner is still visible after 10 seconds
+        if (!document.getElementById('spinnerOverlay').classList.contains('d-none')) {
+          console.log('Search taking longer than expected, updating status message');
+          const statusMsg = document.getElementById('searchStatus');
+          if (statusMsg) {
+            statusMsg.innerHTML = `
+              Still searching... <br>
+              <small class="text-muted">If this takes too long, check your API configuration or network connection.</small>
+              <small class="text-muted d-block mt-1">Complex queries may take longer to complete.</small>
+            `;
+          }
+        }
+      }, 10000); // 10 seconds timeout
+      
+      // This resolve doesn't affect the actual search
+      resolve();
+    });
+    
+    // Run both promises (the actual search and the timeout checker)
+    Promise.all([searchPromise, timeoutPromise])
+      .catch(error => {
+        console.error('Error in search operation:', error);
+      });
+  }
+  
+  // Helper function to escape HTML
+  function escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
   
   // Search for users via Freshservice API
@@ -1416,6 +1623,14 @@ function runDiagnostics() {
       
       console.log('Searching users with query:', query);
       console.log('Using API URL:', app.apiUrl);
+      
+      // Validate API URL
+      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
+        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
+        const sampleData = renderSampleUsers(query);
+        resolve(sampleData);
+        return;
+      }
       
       // Make sure we have a client
       if (!window.client || !window.client.request) {
@@ -1448,30 +1663,173 @@ function runDiagnostics() {
       window.client.request.get(apiUrl, options)
         .then(function(response) {
           console.log('API response received, status:', response.status);
+          console.log('Full response object:', JSON.stringify(response, null, 2));
           
           try {
-            console.log('Raw response:', response.response);
-            const data = JSON.parse(response.response);
-            console.log('Parsed data:', data);
+            // Step 1: Get the actual data from the response (which might be in different formats)
+            let data;
             
+            // Case 1: String response that needs parsing
+            if (typeof response.response === 'string') {
+              console.log('Response is a string, trying to parse as JSON');
+              data = JSON.parse(response.response);
+            } 
+            // Case 2: Response is already an object
+            else if (typeof response.response === 'object' && response.response !== null) {
+              console.log('Response is already an object');
+              data = response.response;
+            }
+            // Case 3: Response itself might be the data (direct response)
+            else if (typeof response === 'object' && response !== null && !response.response) {
+              console.log('Response appears to be the data directly');
+              data = response;
+            }
+            // Case 4: Fall back to the full response as a last resort
+            else {
+              console.log('Using full response as data');
+              data = response;
+            }
+            
+            console.log('Extracted data:', JSON.stringify(data, null, 2));
+            
+            // Step 2: Find the actual agents data, which could be in different properties
+            let agentsData = [];
+            
+            // Check for standard format with agents property
             if (data && data.agents && Array.isArray(data.agents)) {
-              console.log(`Found ${data.agents.length} agents matching the query`);
-              renderResults('users', data.agents);
-              resolve(data.agents);
+              console.log(`Found agents in standard format, count: ${data.agents.length}`);
+              agentsData = data.agents;
+            }
+            // Check if the data itself is an array
+            else if (data && Array.isArray(data)) {
+              console.log('Data is an array directly, using as agents');
+              agentsData = data;
+            }
+            // Check if we need to go one level deeper (some APIs wrap in 'data' property)
+            else if (data && data.data) {
+              if (Array.isArray(data.data)) {
+                console.log('Found agents in data property, using as agents');
+                agentsData = data.data;
+              }
+              else if (data.data.agents && Array.isArray(data.data.agents)) {
+                console.log('Found agents in data.agents property');
+                agentsData = data.data.agents;
+              }
+            }
+            
+            // If we found any agents, render them
+            if (agentsData.length > 0) {
+              console.log(`Found ${agentsData.length} agents to render`);
+              renderResults('users', agentsData);
+              resolve(agentsData);
             } else {
-              console.warn('Response contained no agents array:', data);
-              renderResults('users', []);
-              resolve([]);
+              console.log('No agents found in any expected location');
+              // Check one more time through all properties to find arrays that might be agents
+              let foundArray = false;
+              
+              if (typeof data === 'object' && data !== null) {
+                // Look through all properties for arrays
+                for (const key in data) {
+                  if (Array.isArray(data[key]) && data[key].length > 0 && 
+                      // Check if array items look like agents (have typical agent properties)
+                      (data[key][0].email || data[key][0].first_name || data[key][0].last_name)) {
+                    console.log(`Found possible agents array in '${key}' property`);
+                    agentsData = data[key];
+                    foundArray = true;
+                    break;
+                  }
+                }
+              }
+              
+              if (foundArray) {
+                renderResults('users', agentsData);
+                resolve(agentsData);
+              } else {
+                console.warn('No agents found in response');
+                renderResults('users', []);
+                resolve([]);
+              }
             }
           } catch (error) {
-            console.error('Error parsing API response:', error);
-            console.error('Failed response:', response.response);
-            showError('Invalid response format from API');
-            reject(error);
+            console.error('Error processing API response:', error);
+            console.error('Failed response:', response);
+            
+            // Even if we fail to parse, try to show the raw data
+            let errorMessage = `Error processing response: ${error.message}`;
+            let responseText = '';
+            
+            try {
+              // Try to get some useful information from the response
+              if (response && response.response) {
+                if (typeof response.response === 'string') {
+                  responseText = response.response.substring(0, 100) + '...';
+                } else if (typeof response.response === 'object') {
+                  responseText = JSON.stringify(response.response).substring(0, 100) + '...';
+                }
+              }
+              
+              if (responseText) {
+                console.log('Response preview:', responseText);
+                // Don't reject, try to work with the data we have
+                let dataToRender = [];
+                
+                if (responseText.includes('email') || responseText.includes('first_name')) {
+                  try {
+                    // Last attempt to extract usable data
+                    if (typeof response.response === 'string') {
+                      dataToRender = JSON.parse(response.response);
+                      if (!Array.isArray(dataToRender)) {
+                        // Navigate through common object structures to find agents
+                        if (dataToRender.agents) dataToRender = dataToRender.agents;
+                        else if (dataToRender.data && Array.isArray(dataToRender.data)) {
+                          dataToRender = dataToRender.data;
+                        }
+                        else if (dataToRender.data && dataToRender.data.agents) {
+                          dataToRender = dataToRender.data.agents;
+                        }
+                        // If still not an array but looks like a single agent, wrap it
+                        else if (dataToRender.email || dataToRender.first_name) {
+                          dataToRender = [dataToRender];
+                        }
+                        else {
+                          dataToRender = [];
+                        }
+                      }
+                    }
+                    
+                    if (dataToRender && dataToRender.length > 0) {
+                      console.log('Recovered data from error situation:', dataToRender);
+                      renderResults('users', dataToRender);
+                      return resolve(dataToRender);
+                    }
+                  } catch (e) {
+                    console.error('Failed recovery attempt:', e);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Error in error handling:', e);
+            }
+            
+            showError(errorMessage);
+            renderResults('users', []);
+            resolve([]);  // Resolve empty instead of rejecting
           }
         })
         .catch(function(error) {
           console.error('API request failed:', error);
+          
+          let errorMessage = 'API request failed';
+          if (error.status) {
+            errorMessage += ` (Status: ${error.status})`;
+          }
+          if (error.message) {
+            errorMessage += `: ${error.message}`;
+          } else if (error.statusText) {
+            errorMessage += `: ${error.statusText}`;
+          }
+          
+          showError(errorMessage);
           
           // Always fall back to sample data if the API call fails
           console.log('API call failed, falling back to sample data');
@@ -1497,6 +1855,15 @@ function runDiagnostics() {
         return;
       }
       
+      // Validate API URL
+      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
+        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
+        const sampleData = renderSampleUsers(query);
+        resolve(sampleData);
+        toggleSpinner(false);
+        return;
+      }
+      
       try {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
@@ -1518,7 +1885,7 @@ function runDiagnostics() {
         })
         .then(response => {
           if (!response.ok) {
-            throw new Error('Network response was not ok: ' + response.status);
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
           }
           return response.json();
         })
@@ -1531,12 +1898,27 @@ function runDiagnostics() {
             resolve(data.agents);
           } else {
             console.warn('Response contained no agents array:', data);
-            renderResults('users', []);
-            resolve([]);
+            // Check if data is in a different format
+            if (data && Array.isArray(data)) {
+              console.log('Data appears to be an array directly, using as agents');
+              renderResults('users', data);
+              resolve(data);
+            } else {
+              renderResults('users', []);
+              resolve([]);
+            }
           }
         })
         .catch(error => {
           console.error('Direct fetch error:', error);
+          
+          // Show detailed error message
+          let errorMessage = 'API request failed';
+          if (error.message) {
+            errorMessage += `: ${error.message}`;
+          }
+          showError(errorMessage);
+          
           console.log('Falling back to sample data');
           const sampleData = renderSampleUsers(query);
           resolve(sampleData);
@@ -1546,6 +1928,7 @@ function runDiagnostics() {
         });
       } catch (error) {
         console.error('Error in direct fetch:', error);
+        showError(`Error making API request: ${error.message}`);
         const sampleData = renderSampleUsers(query);
         resolve(sampleData);
         toggleSpinner(false);
@@ -1611,6 +1994,14 @@ function runDiagnostics() {
       console.log('Searching requesters with query:', query);
       console.log('Using API URL:', app.apiUrl);
       
+      // Validate API URL
+      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
+        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
+        const sampleData = renderSampleRequesters(query);
+        resolve(sampleData);
+        return;
+      }
+      
       // Make sure we have a client
       if (!window.client || !window.client.request) {
         // Try to use direct fetch instead of client
@@ -1642,30 +2033,173 @@ function runDiagnostics() {
       window.client.request.get(apiUrl, options)
         .then(function(response) {
           console.log('API response received, status:', response.status);
+          console.log('Full response object:', JSON.stringify(response, null, 2));
           
           try {
-            console.log('Raw response:', response.response);
-            const data = JSON.parse(response.response);
-            console.log('Parsed data:', data);
+            // Step 1: Get the actual data from the response (which might be in different formats)
+            let data;
             
+            // Case 1: String response that needs parsing
+            if (typeof response.response === 'string') {
+              console.log('Response is a string, trying to parse as JSON');
+              data = JSON.parse(response.response);
+            } 
+            // Case 2: Response is already an object
+            else if (typeof response.response === 'object' && response.response !== null) {
+              console.log('Response is already an object');
+              data = response.response;
+            }
+            // Case 3: Response itself might be the data (direct response)
+            else if (typeof response === 'object' && response !== null && !response.response) {
+              console.log('Response appears to be the data directly');
+              data = response;
+            }
+            // Case 4: Fall back to the full response as a last resort
+            else {
+              console.log('Using full response as data');
+              data = response;
+            }
+            
+            console.log('Extracted data:', JSON.stringify(data, null, 2));
+            
+            // Step 2: Find the actual requesters data, which could be in different properties
+            let requestersData = [];
+            
+            // Check for standard format with requesters property
             if (data && data.requesters && Array.isArray(data.requesters)) {
-              console.log(`Found ${data.requesters.length} requesters matching the query`);
-              renderResults('requesters', data.requesters);
-              resolve(data.requesters);
+              console.log(`Found requesters in standard format, count: ${data.requesters.length}`);
+              requestersData = data.requesters;
+            }
+            // Check if the data itself is an array
+            else if (data && Array.isArray(data)) {
+              console.log('Data is an array directly, using as requesters');
+              requestersData = data;
+            }
+            // Check if we need to go one level deeper (some APIs wrap in 'data' property)
+            else if (data && data.data) {
+              if (Array.isArray(data.data)) {
+                console.log('Found requesters in data property, using as requesters');
+                requestersData = data.data;
+              }
+              else if (data.data.requesters && Array.isArray(data.data.requesters)) {
+                console.log('Found requesters in data.requesters property');
+                requestersData = data.data.requesters;
+              }
+            }
+            
+            // If we found any requesters, render them
+            if (requestersData.length > 0) {
+              console.log(`Found ${requestersData.length} requesters to render`);
+              renderResults('requesters', requestersData);
+              resolve(requestersData);
             } else {
-              console.warn('Response contained no requesters array:', data);
-              renderResults('requesters', []);
-              resolve([]);
+              console.log('No requesters found in any expected location');
+              // Check one more time through all properties to find arrays that might be requesters
+              let foundArray = false;
+              
+              if (typeof data === 'object' && data !== null) {
+                // Look through all properties for arrays
+                for (const key in data) {
+                  if (Array.isArray(data[key]) && data[key].length > 0 && 
+                      // Check if array items look like requesters (have typical requester properties)
+                      (data[key][0].email || data[key][0].first_name || data[key][0].last_name)) {
+                    console.log(`Found possible requesters array in '${key}' property`);
+                    requestersData = data[key];
+                    foundArray = true;
+                    break;
+                  }
+                }
+              }
+              
+              if (foundArray) {
+                renderResults('requesters', requestersData);
+                resolve(requestersData);
+              } else {
+                console.warn('No requesters found in response');
+                renderResults('requesters', []);
+                resolve([]);
+              }
             }
           } catch (error) {
-            console.error('Error parsing API response:', error);
-            console.error('Failed response:', response.response);
-            showError('Invalid response format from API');
-            reject(error);
+            console.error('Error processing API response:', error);
+            console.error('Failed response:', response);
+            
+            // Even if we fail to parse, try to show the raw data
+            let errorMessage = `Error processing response: ${error.message}`;
+            let responseText = '';
+            
+            try {
+              // Try to get some useful information from the response
+              if (response && response.response) {
+                if (typeof response.response === 'string') {
+                  responseText = response.response.substring(0, 100) + '...';
+                } else if (typeof response.response === 'object') {
+                  responseText = JSON.stringify(response.response).substring(0, 100) + '...';
+                }
+              }
+              
+              if (responseText) {
+                console.log('Response preview:', responseText);
+                // Don't reject, try to work with the data we have
+                let dataToRender = [];
+                
+                if (responseText.includes('email') || responseText.includes('first_name')) {
+                  try {
+                    // Last attempt to extract usable data
+                    if (typeof response.response === 'string') {
+                      dataToRender = JSON.parse(response.response);
+                      if (!Array.isArray(dataToRender)) {
+                        // Navigate through common object structures to find requesters
+                        if (dataToRender.requesters) dataToRender = dataToRender.requesters;
+                        else if (dataToRender.data && Array.isArray(dataToRender.data)) {
+                          dataToRender = dataToRender.data;
+                        }
+                        else if (dataToRender.data && dataToRender.data.requesters) {
+                          dataToRender = dataToRender.data.requesters;
+                        }
+                        // If still not an array but looks like a single requester, wrap it
+                        else if (dataToRender.email || dataToRender.first_name) {
+                          dataToRender = [dataToRender];
+                        }
+                        else {
+                          dataToRender = [];
+                        }
+                      }
+                    }
+                    
+                    if (dataToRender && dataToRender.length > 0) {
+                      console.log('Recovered data from error situation:', dataToRender);
+                      renderResults('requesters', dataToRender);
+                      return resolve(dataToRender);
+                    }
+                  } catch (e) {
+                    console.error('Failed recovery attempt:', e);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Error in error handling:', e);
+            }
+            
+            showError(errorMessage);
+            renderResults('requesters', []);
+            resolve([]);  // Resolve empty instead of rejecting
           }
         })
         .catch(function(error) {
           console.error('API request failed:', error);
+          
+          let errorMessage = 'API request failed';
+          if (error.status) {
+            errorMessage += ` (Status: ${error.status})`;
+          }
+          if (error.message) {
+            errorMessage += `: ${error.message}`;
+          } else if (error.statusText) {
+            errorMessage += `: ${error.statusText}`;
+          }
+          
+          showError(errorMessage);
           
           // Always fall back to sample data if the API call fails
           console.log('API call failed, falling back to sample data');
@@ -1691,6 +2225,15 @@ function runDiagnostics() {
         return;
       }
       
+      // Validate API URL
+      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
+        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
+        const sampleData = renderSampleRequesters(query);
+        resolve(sampleData);
+        toggleSpinner(false);
+        return;
+      }
+      
       try {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
@@ -1712,7 +2255,7 @@ function runDiagnostics() {
         })
         .then(response => {
           if (!response.ok) {
-            throw new Error('Network response was not ok: ' + response.status);
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
           }
           return response.json();
         })
@@ -1725,12 +2268,27 @@ function runDiagnostics() {
             resolve(data.requesters);
           } else {
             console.warn('Response contained no requesters array:', data);
-            renderResults('requesters', []);
-            resolve([]);
+            // Check if data is in a different format
+            if (data && Array.isArray(data)) {
+              console.log('Data appears to be an array directly, using as requesters');
+              renderResults('requesters', data);
+              resolve(data);
+            } else {
+              renderResults('requesters', []);
+              resolve([]);
+            }
           }
         })
         .catch(error => {
           console.error('Direct fetch error:', error);
+          
+          // Show detailed error message
+          let errorMessage = 'API request failed';
+          if (error.message) {
+            errorMessage += `: ${error.message}`;
+          }
+          showError(errorMessage);
+          
           console.log('Falling back to sample data');
           const sampleData = renderSampleRequesters(query);
           resolve(sampleData);
@@ -1740,6 +2298,7 @@ function runDiagnostics() {
         });
       } catch (error) {
         console.error('Error in direct fetch:', error);
+        showError(`Error making API request: ${error.message}`);
         const sampleData = renderSampleRequesters(query);
         resolve(sampleData);
         toggleSpinner(false);
@@ -1894,11 +2453,59 @@ function runDiagnostics() {
     }
   }
   
+  // Function to test the API credentials
+  function testApiCredentials() {
+    return new Promise((resolve, reject) => {
+      if (!app.apiUrl || !app.apiKey) {
+        reject(new Error('API URL or API Key is not configured'));
+        return;
+      }
+      
+      // Quick validation of API URL format
+      if (!app.apiUrl.includes('.freshservice.com')) {
+        reject(new Error('API URL must be a valid Freshservice domain'));
+        return;
+      }
+      
+      console.log('Testing API credentials...');
+      
+      // Create auth token
+      const authToken = btoa(app.apiKey + ':X');
+      
+      // Try to fetch a simple endpoint (just one agent)
+      const testUrl = `${app.apiUrl}/api/v2/agents?per_page=1`;
+      
+      // Use fetch API for testing
+      fetch(testUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Basic ' + authToken,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`API test failed: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('API test successful:', data);
+        resolve(data);
+      })
+      .catch(error => {
+        console.error('API test failed:', error);
+        reject(error);
+      });
+    });
+  }
+  
   // Display error in the UI
   function displayErrorInUI(message) {
     // Add API URL to error message if it's an API error
     let displayMessage = message;
-    if (message.includes('searching')) {
+    if (message.includes('API') || message.includes('searching')) {
       displayMessage += `<br><br>API URL: ${app.apiUrl || 'Not configured'}`;
     }
     
