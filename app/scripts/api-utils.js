@@ -202,6 +202,56 @@ function rateLimit(client, method, url, options = {}) {
  */
 function rateLimitedFetch(url, options = {}) {
   return rateLimiter.enqueue(() => {
+    // First try to use client.request if available
+    if (window.client && window.client.request && window.client.request.get) {
+      const method = options.method ? options.method.toLowerCase() : 'get';
+      // Extract the path from the full URL
+      let path = url;
+      
+      // If this is a full URL, extract just the path portion
+      if (url.startsWith('http')) {
+        try {
+          const urlObj = new URL(url);
+          path = urlObj.pathname + urlObj.search;
+        } catch (e) {
+          console.warn('Could not parse URL:', url);
+        }
+      }
+      
+      // Convert options to client.request format
+      const clientOptions = {
+        headers: options.headers || {}
+      };
+      
+      if (options.body) {
+        try {
+          // Assume JSON body if content-type is application/json
+          if (options.headers && options.headers['Content-Type'] === 'application/json') {
+            clientOptions.body = typeof options.body === 'string' ? 
+              JSON.parse(options.body) : options.body;
+          } else {
+            clientOptions.body = options.body;
+          }
+        } catch (e) {
+          console.warn('Could not parse request body:', e);
+          clientOptions.body = options.body;
+        }
+      }
+      
+      // Use the appropriate method from client.request
+      return window.client.request[method](path, clientOptions)
+        .then(response => {
+          // Return a response object in a consistent format
+          return {
+            status: response.status,
+            headers: response.headers || new Headers(),
+            response: response.response,
+            options: options
+          };
+        });
+    }
+    
+    // Fallback to fetch if client.request is not available
     return fetch(url, options).then(response => {
       // Extract headers for rate limit info and update rate limiter
       if (response.headers) {

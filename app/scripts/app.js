@@ -1918,43 +1918,34 @@ function runDiagnostics() {
       toggleSpinner(true);
       
       try {
-        // Create Basic Auth token
-        const authToken = btoa(app.apiKey + ':X');
-        console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
-        
         // Build the query with proper encoding - include email in search fields
         const queryString = `~[first_name|last_name|email]:'${query}'`;
         const encodedQuery = encodeURIComponent(queryString);
-        const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
-        console.log('Request URL:', apiUrl);
+        const apiPath = `/api/v2/requesters?query="${encodedQuery}"`;
+        console.log('Request URL:', app.apiUrl + apiPath);
         
-        // Create an AbortController to handle request cancellation
-        const controller = new AbortController();
-        const signal = controller.signal;
-        
-        // Attach the abort controller to the promise for external cancellation
-        const fetchPromise = fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': 'Basic ' + authToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          signal: signal
-        });
-        
-        // Add abort method to the promise
-        fetchPromise.abort = () => controller.abort();
-        
-        // Return the fetch promise
-        fetchPromise
-          .then(response => {
-            if (!response.ok) {
-              const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
-              error.status = response.status;
-              throw error;
+        // Use client.request instead of fetch
+        if (window.client && window.client.request) {
+          // Create an object to track if the request has been aborted
+          const abortInfo = { isAborted: false };
+          
+          // Create the request promise
+          const requestPromise = window.client.request.get(apiPath, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
             }
-            return response.json();
+          })
+          .then(response => {
+            // Skip processing if the request was aborted
+            if (abortInfo.isAborted) {
+              console.log('Request was aborted');
+              return { requesters: [] };
+            }
+            
+            // Parse the response JSON
+            const data = JSON.parse(response.response);
+            return data;
           })
           .then(data => {
             console.log('API response:', data);
@@ -1978,7 +1969,7 @@ function runDiagnostics() {
           })
           .catch(error => {
             // Skip rendering if the request was aborted
-            if (error.name === 'AbortError') {
+            if (abortInfo.isAborted) {
               console.log('Request was aborted');
               return resolve([]);
             }
@@ -2000,9 +1991,98 @@ function runDiagnostics() {
           .finally(function() {
             toggleSpinner(false);
           });
-        
-        // Return the fetch promise for external control
-        return fetchPromise;
+          
+          // Add an abort method to the promise
+          requestPromise.abort = () => {
+            abortInfo.isAborted = true;
+            // Note: client.request doesn't support aborting directly, 
+            // but we can prevent the handlers from processing the response
+          };
+          
+          return requestPromise;
+        } else {
+          // Fallback to fetch if client.request is not available
+          const authToken = btoa(app.apiKey + ':X');
+          console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
+          
+          const apiUrl = `${app.apiUrl}${apiPath}`;
+          
+          // Create an AbortController to handle request cancellation
+          const controller = new AbortController();
+          const signal = controller.signal;
+          
+          // Attach the abort controller to the promise for external cancellation
+          const fetchPromise = fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            signal: signal
+          });
+          
+          // Add abort method to the promise
+          fetchPromise.abort = () => controller.abort();
+          
+          // Return the fetch promise
+          fetchPromise
+            .then(response => {
+              if (!response.ok) {
+                const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
+                error.status = response.status;
+                throw error;
+              }
+              return response.json();
+            })
+            .then(data => {
+              console.log('API response:', data);
+              
+              if (data && data.requesters && Array.isArray(data.requesters)) {
+                console.log(`Found ${data.requesters.length} requesters matching the query`);
+                renderResults('requesters', data.requesters);
+                resolve(data.requesters);
+              } else {
+                console.warn('Response contained no requesters array:', data);
+                // Check if data is in a different format
+                if (data && Array.isArray(data)) {
+                  console.log('Data appears to be an array directly, using as requesters');
+                  renderResults('requesters', data);
+                  resolve(data);
+                } else {
+                  renderResults('requesters', []);
+                  resolve([]);
+                }
+              }
+            })
+            .catch(error => {
+              // Skip rendering if the request was aborted
+              if (error.name === 'AbortError') {
+                console.log('Request was aborted');
+                return resolve([]);
+              }
+              
+              console.error('API request failed:', error);
+              
+              let errorMessage = 'API request failed';
+              if (error.status) {
+                errorMessage += ` (Status: ${error.status})`;
+              }
+              if (error.message) {
+                errorMessage += `: ${error.message}`;
+              }
+              
+              showError(errorMessage);
+              renderResults('requesters', []);
+              resolve([]);
+            })
+            .finally(function() {
+              toggleSpinner(false);
+            });
+          
+          // Return the fetch promise for external control
+          return fetchPromise;
+        }
       } catch (error) {
         console.error('Error in search:', error);
         showError(`Error making API request: ${error.message}`);
