@@ -2095,58 +2095,112 @@ function runDiagnostics() {
         const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
-        // Make the API call
-        fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': 'Basic ' + authToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then(data => {
-          console.log('Direct fetch response:', data);
-          
-          if (data && data.agents && Array.isArray(data.agents)) {
-            console.log(`Found ${data.agents.length} agents matching the query`);
-            renderResults('users', data.agents);
-            resolve(data.agents);
-          } else {
-            console.warn('Response contained no agents array:', data);
-            // Check if data is in a different format
-            if (data && Array.isArray(data)) {
-              console.log('Data appears to be an array directly, using as agents');
-              renderResults('users', data);
-              resolve(data);
-            } else {
-              renderResults('users', []);
-              resolve([]);
+        // Try to use client.request if available
+        if (window.client && window.client.request) {
+          const options = {
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
             }
-          }
-        })
-        .catch(error => {
-          console.error('Direct fetch error:', error);
+          };
           
-          // Show detailed error message
-          let errorMessage = 'API request failed';
-          if (error.message) {
-            errorMessage += `: ${error.message}`;
-          }
-          showError(errorMessage);
-          
-          console.log('Falling back to sample data');
-          const sampleData = renderSampleUsers(query);
-          resolve(sampleData);
-        })
-        .finally(() => {
-          toggleSpinner(false);
-        });
+          window.client.request.get(apiUrl, options)
+            .then(response => {
+              console.log('Client request response:', response);
+              
+              // Parse the response which could be in different formats
+              let data;
+              if (typeof response.response === 'string') {
+                data = JSON.parse(response.response);
+              } else if (typeof response.response === 'object') {
+                data = response.response;
+              } else {
+                data = response;
+              }
+              
+              if (data && data.agents && Array.isArray(data.agents)) {
+                console.log(`Found ${data.agents.length} agents matching the query`);
+                renderResults('users', data.agents);
+                resolve(data.agents);
+              } else {
+                console.warn('Response contained no agents array:', data);
+                // Check if data is in a different format
+                if (data && Array.isArray(data)) {
+                  console.log('Data appears to be an array directly, using as agents');
+                  renderResults('users', data);
+                  resolve(data);
+                } else {
+                  renderResults('users', []);
+                  resolve([]);
+                }
+              }
+            })
+            .catch(error => {
+              console.error('Client request error:', error);
+              
+              // Show detailed error message
+              const errorMessage = 'API request failed' + (error.message ? `: ${error.message}` : '');
+              showError(errorMessage);
+              
+              console.log('Falling back to sample data');
+              const sampleData = renderSampleUsers(query);
+              resolve(sampleData);
+            })
+            .finally(() => {
+              toggleSpinner(false);
+            });
+        } else {
+          // Fallback to fetch if client.request is not available
+          fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('Direct fetch response:', data);
+            
+            if (data && data.agents && Array.isArray(data.agents)) {
+              console.log(`Found ${data.agents.length} agents matching the query`);
+              renderResults('users', data.agents);
+              resolve(data.agents);
+            } else {
+              console.warn('Response contained no agents array:', data);
+              // Check if data is in a different format
+              if (data && Array.isArray(data)) {
+                console.log('Data appears to be an array directly, using as agents');
+                renderResults('users', data);
+                resolve(data);
+              } else {
+                renderResults('users', []);
+                resolve([]);
+              }
+            }
+          })
+          .catch(error => {
+            console.error('Direct fetch error:', error);
+            
+            // Show detailed error message
+            const errorMessage = 'API request failed' + (error.message ? `: ${error.message}` : '');
+            showError(errorMessage);
+            
+            console.log('Falling back to sample data');
+            const sampleData = renderSampleUsers(query);
+            resolve(sampleData);
+          })
+          .finally(() => {
+            toggleSpinner(false);
+          });
+        }
       } catch (error) {
         console.error('Error in direct fetch:', error);
         showError(`Error making API request: ${error.message}`);
@@ -2503,7 +2557,7 @@ function runDiagnostics() {
           console.error('Direct fetch error:', error);
           
           // Show detailed error message
-          let errorMessage = 'API request failed';
+          const errorMessage = 'API request failed';
           if (error.message) {
             errorMessage += `: ${error.message}`;
           }
@@ -2831,29 +2885,50 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
       // Try to fetch a simple endpoint (just one agent)
       const testUrl = `${app.apiUrl}/api/v2/agents?per_page=1`;
       
-      // Use fetch API for testing
-      fetch(testUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Basic ' + authToken,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`API test failed: ${response.status} ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        console.log('API test successful:', data);
-        resolve(data);
-      })
-      .catch(error => {
-        console.error('API test failed:', error);
-        reject(error);
-      });
+      // Use client.request when available, otherwise fall back to fetch
+      if (window.client && window.client.request) {
+        const options = {
+          headers: {
+            'Authorization': 'Basic ' + authToken,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        };
+        
+        window.client.request.get(testUrl, options)
+          .then(response => {
+            console.log('API test successful:', response);
+            resolve(response);
+          })
+          .catch(error => {
+            console.error('API test failed:', error);
+            reject(error);
+          });
+      } else {
+        // Fallback to fetch API if client.request is not available
+        fetch(testUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Basic ' + authToken,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`API test failed: ${response.status} ${response.statusText}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('API test successful:', data);
+          resolve(data);
+        })
+        .catch(error => {
+          console.error('API test failed:', error);
+          reject(error);
+        });
+      }
     });
   }
   
@@ -2898,44 +2973,6 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
     }
   }
 
-  // Helper function to copy text to clipboard
-  function copyToClipboard(text) {
-    // Create temp element
-    const el = document.createElement('textarea');
-    el.value = text;
-    document.body.appendChild(el);
-    el.select();
-    
-    try {
-      // Execute copy command
-      document.execCommand('copy');
-      
-      // Show success notification
-      const notification = document.createElement('div');
-      notification.style.position = 'fixed';
-      notification.style.bottom = '20px';
-      notification.style.right = '20px';
-      notification.style.backgroundColor = '#28a745';
-      notification.style.color = 'white';
-      notification.style.padding = '10px 15px';
-      notification.style.borderRadius = '4px';
-      notification.style.zIndex = '9999';
-      notification.textContent = 'Copied to clipboard!';
-      
-      document.body.appendChild(notification);
-      
-      // Auto-remove after 2 seconds
-      setTimeout(() => {
-        document.body.removeChild(notification);
-      }, 2000);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-    
-    // Remove temp element
-    document.body.removeChild(el);
-  }
-
   // Function to export search results to CSV
   function exportToCsv(type) {
     // Check if we have results to export
@@ -2969,13 +3006,13 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
         commonColumns;
       
       // Create CSV header row
-      let csv = columns.map(col => `"${col.label}"`).join(',') + '\n';
+      let csvContent = columns.map(col => `"${col.label}"`).join(',') + '\n';
       
       // Add data rows
       results.forEach(result => {
         const row = columns.map(col => {
           // Get the value for this column
-          let value = result[col.key];
+          const value = result[col.key];
           
           // Format value based on type
           if (value === undefined || value === null) {
@@ -2998,11 +3035,11 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
           }
         }).join(',');
         
-        csv += row + '\n';
+        csvContent += row + '\n';
       });
       
       // Create download link
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
