@@ -10,6 +10,18 @@ window.addEventListener('securitypolicyviolation', function(e) {
   console.error('CSP violation:', e.blockedURI, 'violated directive:', e.violatedDirective);
 });
 
+// Function to toggle loading spinner
+function toggleSpinner(show) {
+  const spinner = document.getElementById('spinnerOverlay');
+  if (spinner) {
+    if (show) {
+      spinner.classList.remove('d-none');
+    } else {
+      spinner.classList.add('d-none');
+    }
+  }
+}
+
 // Fix for local development environment
 (function() {
   // Check if we're in a local development environment
@@ -25,9 +37,9 @@ window.addEventListener('securitypolicyviolation', function(e) {
     // Fix AJAX requests to convert https://localhost to http://localhost
     const originalFetch = window.fetch;
     window.fetch = function(url, options) {
-      if (typeof url === 'string' && url.startsWith('https://localhost')) {
+      if (typeof url === 'string' && (url.startsWith('https://localhost') || url.includes('://localhost:'))) {
         console.log('Converting HTTPS to HTTP for localhost URL:', url);
-        url = url.replace('https://localhost', 'http://localhost');
+        url = url.replace(/^(https?:\/\/)localhost/, 'http://localhost');
       }
       return originalFetch.call(this, url, options);
     };
@@ -35,12 +47,30 @@ window.addEventListener('securitypolicyviolation', function(e) {
     // Fix XMLHttpRequest
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-      if (typeof url === 'string' && url.startsWith('https://localhost')) {
+      if (typeof url === 'string' && (url.startsWith('https://localhost') || url.includes('://localhost:'))) {
         console.log('Converting HTTPS to HTTP for localhost URL in XHR:', url);
-        url = url.replace('https://localhost', 'http://localhost');
+        url = url.replace(/^(https?:\/\/)localhost/, 'http://localhost');
       }
       return originalOpen.call(this, method, url, async, user, password);
     };
+    
+    // Fix for resource loading (images, scripts, etc.)
+    if (document.addEventListener) {
+      document.addEventListener('DOMContentLoaded', function() {
+        console.log('Adding fix for resource loading in development mode');
+        // Replace any HTTPS localhost URLs in link, script, and img tags
+        const elements = document.querySelectorAll('link, script, img');
+        elements.forEach(function(el) {
+          const src = el.src || el.href;
+          if (src && typeof src === 'string' && (src.startsWith('https://localhost') || src.includes('://localhost:'))) {
+            console.log('Converting resource URL from HTTPS to HTTP:', src);
+            const newSrc = src.replace(/^(https?:\/\/)localhost/, 'http://localhost');
+            if (el.src) el.src = newSrc;
+            if (el.href) el.href = newSrc;
+          }
+        });
+      });
+    }
   }
   
   // Parse URL parameters for configuration
@@ -541,18 +571,29 @@ function runDiagnostics() {
     // Show the loading indicator
     toggleSpinner(true);
     
+    // Create a safety net if client is not defined yet
+    if (typeof client === 'undefined') {
+      console.warn('Client object not available, creating fallback client');
+      window.client = createDevClient();
+    }
+    
     // Attempt to get client from the Freshworks SDK
-    client.initialized()
-      .then(function() {
-        console.log('Freshworks Client initialized');
-        onClientReady(client);
-      })
-      .catch(function(error) {
-        console.error('Failed to initialize Freshworks client:', error);
-        // Fall back to direct initialization without the client
-        initializeFallback();
-      });
-      
+    try {
+      client.initialized()
+        .then(function() {
+          console.log('Freshworks Client initialized');
+          onClientReady(client);
+        })
+        .catch(function(error) {
+          console.error('Failed to initialize Freshworks client:', error);
+          // Fall back to direct initialization without the client
+          initializeFallback();
+        });
+    } catch (error) {
+      console.error('Error initializing client:', error);
+      initializeFallback();
+    }
+    
     // Set up integration with change form
     integrateWithChangeForm();
   }
@@ -867,6 +908,13 @@ function runDiagnostics() {
     
     function loadFromIparams() {
       console.log('Loading from client.iparams.get()');
+      
+      // Add safety check for client.iparams
+      if (!client || !client.iparams || typeof client.iparams.get !== 'function') {
+        console.warn('client.iparams.get not available, skipping');
+        return Promise.resolve(false);
+      }
+      
       return client.iparams.get().then(params => {
         if (params && params.api_url) {
           console.log('Using configuration from iparams');
