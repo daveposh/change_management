@@ -172,6 +172,26 @@ function createFakeClient() {
         });
       }
     },
+    db: {
+      set: function(key, value) {
+        console.log('Fake client: db.set called with key:', key);
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+          return Promise.resolve({ Created: true });
+        } catch (e) {
+          return Promise.reject(e);
+        }
+      },
+      get: function(key) {
+        console.log('Fake client: db.get called with key:', key);
+        try {
+          const value = localStorage.getItem(key);
+          return Promise.resolve(value ? JSON.parse(value) : null);
+        } catch (e) {
+          return Promise.reject(e);
+        }
+      }
+    },
     request: {
       get: function(url) {
         console.log('Fake client: request.get called with:', url);
@@ -206,17 +226,8 @@ function createFakeClient() {
   function createDevClient() {
     console.log('Creating real dev client for sandbox testing');
     
-    // Try to load saved iparams from localStorage first
-    let savedIparams = null;
-    try {
-      const savedData = localStorage.getItem('freshservice_change_management_iparams');
-      if (savedData) {
-        savedIparams = JSON.parse(savedData);
-        console.log('Found saved iparams in localStorage:', savedIparams);
-      }
-    } catch (e) {
-      console.error('Error reading from localStorage:', e);
-    }
+    // Try to load saved iparams from a test function first
+    const savedIparams = null;
     
     return {
       iparams: {
@@ -237,112 +248,147 @@ function createFakeClient() {
               ]
             };
             
-            // Save to localStorage for future use
-            try {
-              localStorage.setItem('freshservice_change_management_iparams', JSON.stringify(params));
-              console.log('Saved iparams to localStorage');
-            } catch (e) {
-              console.error('Error saving to localStorage:', e);
-            }
+            // Save to data storage
+            this.saveConfigToStorage(params);
             
             return Promise.resolve(params);
           }
           
-          // Use saved parameters if available
-          if (savedIparams) {
-            console.log('Using saved iparams from localStorage:', {
-              api_url: savedIparams.api_url,
-              has_api_key: !!savedIparams.api_key,
-              app_title: savedIparams.app_title
-            });
-            return Promise.resolve(savedIparams);
-          }
-          
-          // If no saved parameters, show a configuration form instead of prompts
-          if (!savedIparams) {
-            console.log('No saved parameters, using default configuration');
-            // Create default configuration
-            const params = {
-              api_url: 'example.freshservice.com',
-              api_key: 'dev-placeholder-key',
-              app_title: 'Change Management',
-              change_types: [
-                "Standard Change",
-                "Emergency Change",
-                "Non-Standard Change"
-              ]
-            };
-            
-            // Create configuration UI on DOM load
-            document.addEventListener('DOMContentLoaded', function() {
-              // Check if config form already exists
-              if (document.getElementById('dev-config-form')) {
-                return;
+          // Try to load from data storage
+          return this.loadConfigFromStorage()
+            .then(config => {
+              if (config) {
+                console.log('Using saved iparams from data storage');
+                return config;
               }
               
-              const container = document.querySelector('.container') || document.body;
+              // Default config if nothing is found
+              const defaultConfig = {
+                api_url: 'example.freshservice.com',
+                api_key: 'dev-placeholder-key',
+                app_title: 'Change Management',
+                change_types: [
+                  "Standard Change",
+                  "Emergency Change",
+                  "Non-Standard Change"
+                ]
+              };
               
-              // Create config form element
-              const configForm = document.createElement('div');
-              configForm.id = 'dev-config-form';
-              configForm.style.backgroundColor = '#f8f9fa';
-              configForm.style.padding = '15px';
-              configForm.style.marginBottom = '20px';
-              configForm.style.border = '1px solid #ddd';
-              configForm.style.borderRadius = '5px';
-              
-              configForm.innerHTML = `
-                <h4>Development Configuration</h4>
-                <p>Enter your Freshservice settings below to test the app:</p>
-                <div style="margin-bottom:10px">
-                  <label for="dev-api-url" style="display:block;font-weight:bold">Freshservice URL:</label>
-                  <input type="text" id="dev-api-url" placeholder="yourcompany.freshservice.com" style="width:100%;padding:5px" value="${params.api_url}">
-                </div>
-                <div style="margin-bottom:10px">
-                  <label for="dev-api-key" style="display:block;font-weight:bold">API Key:</label>
-                  <input type="password" id="dev-api-key" placeholder="Enter your API key" style="width:100%;padding:5px" value="${params.api_key}">
-                </div>
-                <div style="margin-bottom:10px">
-                  <label for="dev-app-title" style="display:block;font-weight:bold">App Title:</label>
-                  <input type="text" id="dev-app-title" placeholder="Change Management" style="width:100%;padding:5px" value="${params.app_title}">
-                </div>
-                <div style="margin-top:15px">
-                  <button id="dev-save-config" style="padding:8px 15px;background:#4CAF50;color:white;border:none;border-radius:4px;cursor:pointer">Save Settings</button>
-                </div>
-              `;
-              
-              // Insert at beginning of container
-              container.insertBefore(configForm, container.firstChild);
-              
-              // Add event listener to save button
-              document.getElementById('dev-save-config').addEventListener('click', function() {
-                const savedConfig = {
-                  api_url: document.getElementById('dev-api-url').value || params.api_url,
-                  api_key: document.getElementById('dev-api-key').value || params.api_key,
-                  app_title: document.getElementById('dev-app-title').value || params.app_title,
-                  change_types: params.change_types
-                };
-                
-                // Save to localStorage
-                try {
-                  localStorage.setItem('freshservice_change_management_iparams', JSON.stringify(savedConfig));
-                  console.log('Saved configuration to localStorage');
-                  
-                  // Reload the page to apply settings
-                  location.reload();
-                } catch (e) {
-                  console.error('Error saving to localStorage:', e);
-                  // Show error in the form
-                  const errorMsg = document.createElement('div');
-                  errorMsg.style.color = 'red';
-                  errorMsg.style.marginTop = '10px';
-                  errorMsg.textContent = 'Failed to save settings: ' + e.message;
-                  configForm.appendChild(errorMsg);
-                }
-              });
+              return defaultConfig;
+            })
+            .catch(err => {
+              console.error('Error loading from data storage:', err);
+              // Return default config on error
+              return {
+                api_url: 'example.freshservice.com',
+                api_key: 'dev-placeholder-key',
+                app_title: 'Change Management',
+                change_types: [
+                  "Standard Change",
+                  "Emergency Change",
+                  "Non-Standard Change"
+                ]
+              };
             });
-            
-            return Promise.resolve(params);
+        },
+        
+        saveConfigToStorage: function(config) {
+          console.log('Saving configuration to data storage');
+          try {
+            if (window.client && window.client.db) {
+              window.client.db.set('app_config', config)
+                .then(() => console.log('Saved config to data storage'))
+                .catch(err => console.error('Error saving to data storage:', err));
+            } else {
+              // Fallback to localStorage for dev mode
+              localStorage.setItem('freshservice_change_management_iparams', JSON.stringify(config));
+              console.log('Saved config to localStorage (fallback)');
+            }
+          } catch (e) {
+            console.error('Error saving configuration:', e);
+          }
+        },
+        
+        loadConfigFromStorage: function() {
+          console.log('Loading configuration from data storage');
+          
+          // First try to load from client.db
+          if (window.client && window.client.db) {
+            return window.client.db.get('app_config')
+              .then(config => {
+                if (config) {
+                  console.log('Found config in data storage');
+                  return config;
+                }
+                
+                // If not found in client.db, try localStorage fallback
+                try {
+                  const savedData = localStorage.getItem('freshservice_change_management_iparams');
+                  if (savedData) {
+                    const savedConfig = JSON.parse(savedData);
+                    console.log('Found config in localStorage, migrating to data storage');
+                    
+                    // Migrate to client.db
+                    this.saveConfigToStorage(savedConfig);
+                    
+                    return savedConfig;
+                  }
+                } catch (e) {
+                  console.error('Error reading from localStorage:', e);
+                }
+                
+                return null;
+              })
+              .catch(err => {
+                console.error('Error reading from data storage:', err);
+                
+                // Fallback to localStorage
+                try {
+                  const savedData = localStorage.getItem('freshservice_change_management_iparams');
+                  if (savedData) {
+                    return JSON.parse(savedData);
+                  }
+                } catch (e) {
+                  console.error('Error reading from localStorage:', e);
+                }
+                
+                return null;
+              });
+          } else {
+            // If client.db is not available, use localStorage
+            return new Promise((resolve) => {
+              try {
+                const savedData = localStorage.getItem('freshservice_change_management_iparams');
+                if (savedData) {
+                  resolve(JSON.parse(savedData));
+                } else {
+                  resolve(null);
+                }
+              } catch (e) {
+                console.error('Error reading from localStorage:', e);
+                resolve(null);
+              }
+            });
+          }
+        }
+      },
+      db: {
+        set: function(key, value) {
+          console.log('Dev client: db.set called with key:', key);
+          try {
+            localStorage.setItem(key, JSON.stringify(value));
+            return Promise.resolve({ Created: true });
+          } catch (e) {
+            return Promise.reject(e);
+          }
+        },
+        get: function(key) {
+          console.log('Dev client: db.get called with key:', key);
+          try {
+            const value = localStorage.getItem(key);
+            return Promise.resolve(value ? JSON.parse(value) : null);
+          } catch (e) {
+            return Promise.reject(e);
           }
         }
       },
@@ -428,14 +474,27 @@ function createFakeClient() {
       window.client = devClient;
       onClientReady(devClient);
       
-      // Add a click handler to the dev badge to clear localStorage settings
+      // Add a click handler to the dev badge to clear settings
       document.addEventListener('DOMContentLoaded', function() {
         const devBadge = document.querySelector('div[style*="DEV MODE"]');
         if (devBadge) {
           devBadge.style.cursor = 'pointer';
           devBadge.title = 'Click to clear saved settings';
           devBadge.addEventListener('click', function() {
-            localStorage.removeItem('freshservice_change_management_iparams');
+            if (window.client && window.client.db) {
+              window.client.db.delete('app_config')
+                .then(() => {
+                  console.log('Cleared settings from data storage');
+                  // Also clear localStorage for complete cleanup
+                  localStorage.removeItem('freshservice_change_management_iparams');
+                  localStorage.removeItem('appConfig');
+                })
+                .catch(err => console.error('Error clearing settings from data storage:', err));
+            } else {
+              // Fallback to localStorage only
+              localStorage.removeItem('freshservice_change_management_iparams');
+              localStorage.removeItem('appConfig');
+            }
             
             // Show notification instead of using alert
             const notification = document.createElement('div');
@@ -564,151 +623,33 @@ function createFakeClient() {
       return;
     }
     
-    // Check for saved API settings in localStorage first
-    let hasSavedSettings = false;
-    try {
-      const savedData = localStorage.getItem('freshservice_change_management_iparams');
-      if (savedData) {
-        const savedIparams = JSON.parse(savedData);
-        if (savedIparams.api_url && savedIparams.api_key) {
-          console.log('Found valid saved API settings, using them with development client');
-          hasSavedSettings = true;
-        }
-      }
-    } catch (e) {
-      console.error('Error checking saved settings:', e);
-    }
-    
     // Create dev client that makes real API calls
     console.log('Creating client with saved settings');
     const devClient = createDevClient();
     window.client = devClient;
     onClientReady(devClient);
-    
-    // Only show warning if we don't have saved settings
-    if (!hasSavedSettings) {
-      showWarning('Using development client with example settings. Please configure your Freshservice API settings.');
-    }
   }
   
-  // Handler when client is ready
   function onClientReady(client) {
     // Ensure we only initialize once
-    if (window.app.initialized) {
-      console.log('App already initialized, skipping');
+    if (window.app && window.app.initialized) {
+      console.log('App already initialized, skipping initialization');
       return;
     }
     
+    console.log('Client ready, initializing app features');
+    window.app = window.app || {};
     window.app.initialized = true;
-    window.client = client;
-    console.log('Client ready, setting up app...');
-    
-    // Set up event listeners for UI
-    setupEventListeners();
-    
-    // Make search function globally available
-    app.performSearch = performSearch;
-    window.performSearch = performSearch;
+    window.app.client = client;
     
     // Load API configuration
-    if (client && client.iparams && typeof client.iparams.get === 'function') {
-      console.log('Client has iparams.get, loading configuration from installation settings');
-      loadApiConfiguration(client);
-    } else {
-      console.warn('Client is missing iparams.get function, trying alternative config sources');
-      
-      // Try to get configuration from various sources in order of preference
-      let configFound = false;
-      
-      // 1. Check if config was passed via URL parameters (for dev/testing)
-      if (window.__DEV_PARAMS__?.api_url && window.__DEV_PARAMS__?.api_key) {
-        console.log('Using configuration from URL parameters');
-        app.apiUrl = window.__DEV_PARAMS__.api_url;
-        app.apiKey = window.__DEV_PARAMS__.api_key;
-        app.appTitle = window.__DEV_PARAMS__?.app_title || 'Change Management';
-        configFound = true;
-      }
-      
-      // 2. Check if config is available from localStorage (persisted from previous session)
-      if (!configFound && window.localStorage) {
-        try {
-          // First try the specific iparams storage
-          const freshServiceParams = localStorage.getItem('freshservice_change_management_iparams');
-          if (freshServiceParams) {
-            const config = JSON.parse(freshServiceParams);
-            if (config.api_url && config.api_key) {
-              console.log('Using configuration from freshservice_change_management_iparams');
-              
-              // Process API URL to ensure it has proper format
-              let apiUrl = config.api_url;
-              if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-                apiUrl = 'https://' + apiUrl;
-              }
-              
-              app.apiUrl = apiUrl;
-              app.apiKey = config.api_key;
-              app.appTitle = config.app_title || 'Change Management';
-              configFound = true;
-              
-              // Set up API endpoints
-              app.endpoints = {
-                users: `${app.apiUrl}/api/v2/agents`,
-                requesters: `${app.apiUrl}/api/v2/requesters`,
-                groups: `${app.apiUrl}/api/v2/groups`
-              };
-              console.log('API endpoints configured from saved settings:', app.endpoints);
-            }
-          }
-          
-          // Then check legacy storage as fallback
-          if (!configFound) {
-            const storedConfig = localStorage.getItem('appConfig');
-            if (storedConfig) {
-              const config = JSON.parse(storedConfig);
-              console.log('Using configuration from legacy localStorage');
-              app.apiUrl = config.apiUrl;
-              app.apiKey = config.apiKey; 
-              app.appTitle = config.appTitle || 'Change Management';
-              configFound = true;
-            }
-          }
-        } catch (e) {
-          console.error('Error reading config from localStorage:', e);
-        }
-      }
-      
-      // 3. Finally fall back to defaults if nothing else worked
-      if (!configFound) {
-        console.warn('No configuration found, using defaults');
-        app.apiUrl = 'https://example.freshservice.com';
-        app.apiKey = '';
-        app.appTitle = 'Change Management';
-        
-        showWarning('No configuration found. Please reinstall the app with proper settings or contact administrator.');
-      }
-      
-      // Update the UI with the title
-      updateAppTitle(app.appTitle);
-      
-      // Save working config to localStorage for persistence
-      if (app.apiUrl && app.apiKey && window.localStorage) {
-        try {
-          localStorage.setItem('appConfig', JSON.stringify({
-            apiUrl: app.apiUrl,
-            apiKey: app.apiKey,
-            appTitle: app.appTitle
-          }));
-        } catch (e) {
-          console.error('Error saving config to localStorage:', e);
-        }
-      }
-      
-      console.log('Using configuration:', { 
-        apiUrl: app.apiUrl, 
-        hasApiKey: !!app.apiKey, 
-        appTitle: app.appTitle 
-      });
-    }
+    loadApiConfiguration(client);
+    
+    // Add event listeners
+    setupEventListeners();
+    
+    // Run diagnostics after a short delay
+    setTimeout(runDiagnostics, 2000);
   }
   
   // Show warning message but don't block the app
@@ -725,92 +666,135 @@ function createFakeClient() {
     }
   }
   
-  // Load API configuration from installation parameters
   function loadApiConfiguration(client) {
-    console.log('Loading API configuration...');
+    console.log('Loading API configuration from client');
     
-    if (!client || !client.iparams || typeof client.iparams.get !== 'function') {
-      console.error('Client iparams API not available');
-      showError('Cannot access app configuration. Please contact your administrator.');
-      return;
-    }
-
-    // Load configuration directly from iparams
-    loadFromIparams();
+    // Create global app object if it doesn't exist
+    window.app = window.app || {};
     
-    // Helper function to load from iparams
     function loadFromIparams() {
-      client.iparams.get()
-        .then(function(data) {
-          console.log('Installation parameters received:', data);
+      console.log('Loading from client.iparams.get()');
+      return client.iparams.get().then(params => {
+        if (params && params.api_url) {
+          console.log('Using configuration from iparams');
           
-          // Check if we have data returned, even empty object
-          if (!data) {
-            console.error('No data returned from iparams.get()');
-            showError('Failed to load installation parameters. Please check your app configuration.');
-            return;
+          // Process API URL to ensure it has proper format
+          let apiUrl = params.api_url;
+          if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+            apiUrl = 'https://' + apiUrl;
           }
           
-          // Process API URL and key if available
-          if (data.api_url && data.api_key) {
-            let apiUrl = data.api_url;
-            const apiKey = data.api_key;
+          app.apiUrl = apiUrl;
+          app.apiKey = params.api_key;
+          app.appTitle = params.app_title || 'Change Management';
+          app.changeTypes = params.change_types || [
+            "Standard Change", 
+            "Emergency Change", 
+            "Non-Standard Change"
+          ];
+          
+          // Set up API endpoints
+          app.endpoints = {
+            users: `${app.apiUrl}/api/v2/agents`,
+            requesters: `${app.apiUrl}/api/v2/requesters`,
+            groups: `${app.apiUrl}/api/v2/groups`
+          };
+          
+                      console.log('API endpoints configured from iparams:', app.endpoints);
             
-            // Process the API URL
-            // Add https:// if not present
+            // Save working config to storage for persistence
+          saveConfigToStorage(client, {
+            apiUrl: app.apiUrl,
+            apiKey: app.apiKey,
+            appTitle: app.appTitle,
+            changeTypes: app.changeTypes
+          });
+          
+          updateAppTitle(app.appTitle);
+          return true;
+        }
+        return false;
+      }).catch(err => {
+        console.error('Error loading from iparams:', err);
+        return false;
+      });
+    }
+    
+    function loadFromStorage() {
+      console.log('Loading from client.db storage');
+      return client.db.get('app_config')
+        .then(config => {
+          if (config) {
+            console.log('Using configuration from data storage');
+            
+            // Process API URL to ensure it has proper format
+            let apiUrl = config.apiUrl;
             if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
               apiUrl = 'https://' + apiUrl;
-              console.log('Added https:// prefix to API URL:', apiUrl);
-            } else if (apiUrl.startsWith('http://')) {
-              // Replace http:// with https://
-              apiUrl = apiUrl.replace('http://', 'https://');
-              console.log('Converted HTTP to HTTPS for API URL:', apiUrl);
             }
             
-            // Remove trailing slash if present
-            if (apiUrl.endsWith('/')) {
-              apiUrl = apiUrl.slice(0, -1);
-            }
-            
-            // Store the processed values
             app.apiUrl = apiUrl;
-            app.apiKey = apiKey;
-            console.log('API configuration loaded successfully:', { apiUrl: app.apiUrl, hasApiKey: !!app.apiKey });
+            app.apiKey = config.apiKey;
+            app.appTitle = config.appTitle || 'Change Management';
+            app.changeTypes = config.changeTypes || [
+              "Standard Change", 
+              "Emergency Change", 
+              "Non-Standard Change"
+            ];
             
-            // Set up API endpoints using the loaded URL
+            // Set up API endpoints
             app.endpoints = {
               users: `${app.apiUrl}/api/v2/agents`,
               requesters: `${app.apiUrl}/api/v2/requesters`,
               groups: `${app.apiUrl}/api/v2/groups`
             };
-            console.log('API endpoints configured:', app.endpoints);
-          } else {
-            console.warn('Missing API URL or key in configuration');
-            // Still continue processing other parameters
-          }
-          
-          // Set the app title from configuration if available
-          if (data.app_title) {
-            app.appTitle = data.app_title;
-            updateAppTitle(data.app_title);
-            console.log('App title set from configuration:', app.appTitle);
-          } else {
-            // Use default title
-            app.appTitle = 'Change Management';
+            
+            console.log('API endpoints configured from storage:', app.endpoints);
             updateAppTitle(app.appTitle);
-            console.log('Using default app title');
+            return true;
           }
-          
-          // Check if we have all required configuration
-          if (!app.apiUrl || !app.apiKey) {
-            console.error('API configuration is incomplete');
-            showError('API configuration is incomplete. Please check installation parameters.');
-          }
+          return false;
         })
-        .catch(function(error) {
-          console.error('Error loading API configuration:', error);
-          showError('Failed to load API configuration. Please refresh the page.');
+        .catch(err => {
+          console.error('Error loading from storage:', err);
+          return false;
         });
+    }
+    
+    // First try to load from iparams (app settings)
+    loadFromIparams()
+      .then(found => {
+        if (!found) {
+          // Try to load from data storage if not found in iparams
+          return loadFromStorage();
+        }
+        return found;
+      })
+      .then(found => {
+        if (!found) {
+          // Use defaults if nothing worked
+          console.warn('No configuration found, using defaults');
+          app.apiUrl = 'https://example.freshservice.com';
+          app.apiKey = '';
+          app.appTitle = 'Change Management';
+          app.changeTypes = [
+            "Standard Change", 
+            "Emergency Change", 
+            "Non-Standard Change"
+          ];
+          
+          showWarning('No configuration found. Please reinstall the app with proper settings or contact administrator.');
+          updateAppTitle(app.appTitle);
+        }
+      });
+  }
+  
+  function saveConfigToStorage(client, config) {
+    console.log('Saving config to data storage');
+    if (client && client.db) {
+      client.db.set('app_config', config)
+        .then(() => console.log('Config saved to data storage'))
+        .catch(err => console.error('Error saving config to data storage:', err));
     }
   }
   
