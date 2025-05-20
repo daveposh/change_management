@@ -250,7 +250,11 @@ function createFakeClient() {
           
           // Use saved parameters if available
           if (savedIparams) {
-            console.log('Using saved iparams from localStorage');
+            console.log('Using saved iparams from localStorage:', {
+              api_url: savedIparams.api_url,
+              has_api_key: !!savedIparams.api_key,
+              app_title: savedIparams.app_title
+            });
             return Promise.resolve(savedIparams);
           }
           
@@ -356,6 +360,7 @@ function createFakeClient() {
               if (savedData) {
                 const savedIparams = JSON.parse(savedData);
                 apiKey = savedIparams.api_key;
+                console.log('Using API key from saved settings');
               }
             } catch (e) {
               console.error('Error reading API key from localStorage:', e);
@@ -363,7 +368,20 @@ function createFakeClient() {
           }
           
           // Default if still not found
-          apiKey = apiKey || 'dev-placeholder-key';
+          if (!apiKey) {
+            console.warn('No API key found, using placeholder. API calls will likely fail.');
+            apiKey = 'dev-placeholder-key';
+          }
+          
+          // Check if URL is using example.freshservice.com
+          if (url.includes('example.freshservice.com')) {
+            console.error('API call using example.freshservice.com detected. This will not work with real data.');
+            console.error('Please configure your actual Freshservice URL in the app settings.');
+            return Promise.reject({
+              status: 400,
+              statusText: 'Invalid API URL: Using example.freshservice.com placeholder. Please configure your actual Freshservice domain.'
+            });
+          }
           
           const authToken = btoa(apiKey + ':X');
           
@@ -546,12 +564,31 @@ function createFakeClient() {
       return;
     }
     
+    // Check for saved API settings in localStorage first
+    let hasSavedSettings = false;
+    try {
+      const savedData = localStorage.getItem('freshservice_change_management_iparams');
+      if (savedData) {
+        const savedIparams = JSON.parse(savedData);
+        if (savedIparams.api_url && savedIparams.api_key) {
+          console.log('Found valid saved API settings, using them with development client');
+          hasSavedSettings = true;
+        }
+      }
+    } catch (e) {
+      console.error('Error checking saved settings:', e);
+    }
+    
     // Create dev client that makes real API calls
-    console.log('No client available, creating dev client with real API calls');
+    console.log('Creating client with saved settings');
     const devClient = createDevClient();
     window.client = devClient;
     onClientReady(devClient);
-    showWarning('Using development client with real API calls. Some functionality may be limited.');
+    
+    // Only show warning if we don't have saved settings
+    if (!hasSavedSettings) {
+      showWarning('Using development client with example settings. Please configure your Freshservice API settings.');
+    }
   }
   
   // Handler when client is ready
@@ -595,14 +632,45 @@ function createFakeClient() {
       // 2. Check if config is available from localStorage (persisted from previous session)
       if (!configFound && window.localStorage) {
         try {
-          const storedConfig = localStorage.getItem('appConfig');
-          if (storedConfig) {
-            const config = JSON.parse(storedConfig);
-            console.log('Using configuration from localStorage');
-            app.apiUrl = config.apiUrl;
-            app.apiKey = config.apiKey; 
-            app.appTitle = config.appTitle || 'Change Management';
-            configFound = true;
+          // First try the specific iparams storage
+          const freshServiceParams = localStorage.getItem('freshservice_change_management_iparams');
+          if (freshServiceParams) {
+            const config = JSON.parse(freshServiceParams);
+            if (config.api_url && config.api_key) {
+              console.log('Using configuration from freshservice_change_management_iparams');
+              
+              // Process API URL to ensure it has proper format
+              let apiUrl = config.api_url;
+              if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+                apiUrl = 'https://' + apiUrl;
+              }
+              
+              app.apiUrl = apiUrl;
+              app.apiKey = config.api_key;
+              app.appTitle = config.app_title || 'Change Management';
+              configFound = true;
+              
+              // Set up API endpoints
+              app.endpoints = {
+                users: `${app.apiUrl}/api/v2/agents`,
+                requesters: `${app.apiUrl}/api/v2/requesters`,
+                groups: `${app.apiUrl}/api/v2/groups`
+              };
+              console.log('API endpoints configured from saved settings:', app.endpoints);
+            }
+          }
+          
+          // Then check legacy storage as fallback
+          if (!configFound) {
+            const storedConfig = localStorage.getItem('appConfig');
+            if (storedConfig) {
+              const config = JSON.parse(storedConfig);
+              console.log('Using configuration from legacy localStorage');
+              app.apiUrl = config.apiUrl;
+              app.apiKey = config.apiKey; 
+              app.appTitle = config.appTitle || 'Change Management';
+              configFound = true;
+            }
           }
         } catch (e) {
           console.error('Error reading config from localStorage:', e);
