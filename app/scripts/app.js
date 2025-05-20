@@ -1653,8 +1653,8 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      const queryString = `~[first_name|last_name|email]:'${query}'`;
-      const encodedQuery = encodeURIComponent(queryString);
+      // Use the query parameter directly (it might be an advanced query)
+      const encodedQuery = encodeURIComponent(query);
       const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
       console.log('Request URL:', apiUrl);
       
@@ -1868,9 +1868,8 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
-        const encodedQuery = encodeURIComponent(queryString);
+        // Build the query (use the raw query parameter)
+        const encodedQuery = encodeURIComponent(query);
         const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
@@ -2023,8 +2022,8 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      const queryString = `~[first_name|last_name|email]:'${query}'`;
-      const encodedQuery = encodeURIComponent(queryString);
+      // Use the query parameter directly (it might be an advanced query)
+      const encodedQuery = encodeURIComponent(query);
       const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
       console.log('Request URL:', apiUrl);
       
@@ -2238,9 +2237,8 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
-        const encodedQuery = encodeURIComponent(queryString);
+        // Build the query (use the raw query parameter)
+        const encodedQuery = encodeURIComponent(query);
         const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
@@ -2354,6 +2352,12 @@ function runDiagnostics() {
   function renderResults(type, results) {
     const resultsContainer = document.getElementById(`${type}Results`);
     
+    // Remove search status message if it exists
+    const statusMsg = document.getElementById('searchStatus');
+    if (statusMsg) {
+      statusMsg.remove();
+    }
+    
     if (results.length === 0) {
       resultsContainer.innerHTML = `
         <div class="alert alert-info mt-3">
@@ -2363,37 +2367,141 @@ function runDiagnostics() {
       return;
     }
     
+    // Show the number of results found
+    const countMessage = document.createElement('div');
+    countMessage.className = 'alert alert-success mt-2 mb-3';
+    countMessage.innerHTML = `Found ${results.length} ${type} matching your search criteria`;
+    resultsContainer.appendChild(countMessage);
+    
     // Define and initialize the HTML variable before using it
-    let resultHtml = '';
+    let resultHtml = '<div class="search-results">';
     
     // Build each result card
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
-      const initials = getInitials(result.first_name, result.last_name);
       
+      // Handle potentially missing or null fields
+      const firstName = result.first_name || '';
+      const lastName = result.last_name || '';
+      const email = result.email || 'No email provided';
+      const initials = getInitials(firstName, lastName);
+      
+      // Build additional attributes section
+      let additionalAttributes = '';
+      
+      // Function to safely add a badge if the attribute exists
+      const addBadgeIfExists = (label, value, badgeClass = 'badge-secondary') => {
+        if (value !== undefined && value !== null && value !== '') {
+          return `<span class="badge ${badgeClass} mr-1">${label}: ${value}</span>`;
+        }
+        return '';
+      };
+      
+      // Add department info from either department_ids or department
+      if (result.department_ids && Array.isArray(result.department_ids) && result.department_ids.length > 0) {
+        additionalAttributes += addBadgeIfExists('Dept IDs', result.department_ids.join(', '), 'badge-light');
+      } else if (result.department) {
+        additionalAttributes += addBadgeIfExists('Dept', result.department, 'badge-light');
+      }
+      
+      // Add job title if available
+      if (result.job_title) {
+        additionalAttributes += addBadgeIfExists('Job', result.job_title, 'badge-light');
+      }
+      
+      // Add location if available
+      if (result.location_id) {
+        additionalAttributes += addBadgeIfExists('Location', result.location_id, 'badge-light');
+      }
+      
+      // Add phone if available
+      if (result.work_phone_number) {
+        additionalAttributes += addBadgeIfExists('Phone', result.work_phone_number, 'badge-light');
+      }
+      
+      // Add role info if available
+      if (result.roles && Array.isArray(result.roles) && result.roles.length > 0) {
+        const roleIds = result.roles.map(r => r.role_id).join(', ');
+        additionalAttributes += addBadgeIfExists('Roles', roleIds, 'badge-info');
+      }
+      
+      // Add group memberships if available
+      if (result.member_of && Array.isArray(result.member_of) && result.member_of.length > 0) {
+        additionalAttributes += addBadgeIfExists('Member of', result.member_of.join(', '), 'badge-info');
+      }
+      
+      // Add occasional status for agents
+      if (type === 'users' && result.occasional !== undefined) {
+        additionalAttributes += `
+          <span class="badge ${result.occasional ? 'badge-warning' : 'badge-dark'} mr-1">
+            ${result.occasional ? 'Occasional' : 'Full-time'}
+          </span>
+        `;
+      }
+      
+      // Add created date if available
+      if (result.created_at) {
+        const createdDate = new Date(result.created_at);
+        const formattedDate = createdDate.toLocaleDateString();
+        additionalAttributes += addBadgeIfExists('Created', formattedDate, 'badge-light');
+      }
+      
+      // Add custom fields if available
+      if (result.custom_fields && Object.keys(result.custom_fields).length > 0) {
+        for (const [key, value] of Object.entries(result.custom_fields)) {
+          if (value) {
+            additionalAttributes += addBadgeIfExists(key, value, 'badge-light');
+          }
+        }
+      }
+      
+      // Build the user card
       resultHtml += `
-        <div class="user-card d-flex align-items-start">
-          <div class="user-icon">${initials}</div>
-          <div class="user-details">
-            <div class="user-name">${result.first_name} ${result.last_name}</div>
-            <div class="user-email">${result.email}</div>
-            <div class="user-meta">
-              <span class="badge badge-${result.active ? 'success' : 'secondary'} mr-2">
-                ${result.active ? 'Active' : 'Inactive'}
-              </span>
-              ${type === 'users' ? 
-                `<span class="badge badge-info">Agent</span>` : 
-                `<span class="badge badge-primary">Requester</span>`
-              }
-              ${result.department ? `<span class="badge badge-light">${result.department}</span>` : ''}
+        <div class="user-card mb-3 border rounded p-3">
+          <div class="d-flex align-items-start">
+            <div class="user-icon rounded-circle text-center text-white bg-primary mr-3" 
+                 style="width: 40px; height: 40px; line-height: 40px; font-weight: bold;">
+              ${initials}
+            </div>
+            <div class="user-details w-100">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="user-name font-weight-bold">${firstName} ${lastName}</div>
+                <span class="badge badge-${result.active ? 'success' : 'secondary'} mr-2">
+                  ${result.active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div class="user-email text-muted">${email}</div>
+              <div class="user-meta mt-2">
+                ${type === 'users' ? 
+                  `<span class="badge badge-info mr-2">Agent</span>` : 
+                  `<span class="badge badge-primary mr-2">Requester</span>`
+                }
+                ${additionalAttributes}
+              </div>
             </div>
           </div>
         </div>
       `;
     }
     
+    resultHtml += '</div>';
+    
     // Set the HTML content
-    resultsContainer.innerHTML = resultHtml;
+    resultsContainer.innerHTML += resultHtml;
+    
+    // Add a note about available fields
+    const fieldsNote = document.createElement('div');
+    fieldsNote.className = 'small text-muted mt-3';
+    fieldsNote.innerHTML = `
+      <p>Tip: You can use advanced query syntax for more specific searches. Examples:</p>
+      <ul class="small">
+        <li><code>job_title:'Support Specialist'</code> - Exact title match</li>
+        <li><code>department_id:123</code> - Specific department</li>
+        <li><code>~[email]:'john'</code> - Email starts with 'john'</li>
+        <li><code>active:true AND department_id:123</code> - Active users in department 123</li>
+      </ul>
+    `;
+    resultsContainer.appendChild(fieldsNote);
   }
   
   // Helper function to get initials from name
