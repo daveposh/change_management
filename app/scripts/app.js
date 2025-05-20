@@ -2036,20 +2036,36 @@ function runDiagnostics() {
   function renderResults(type, results) {
     console.log(`Attempting to render ${results.length} ${type} results`);
     
+    // Map type to the actual container ID used in HTML
+    // The HTML uses "agentResults" for agents and "requesterResults" for requesters
+    let containerId;
+    if (type === 'users') {
+      containerId = 'agentResults'; // Map 'users' to 'agentResults'
+    } else if (type === 'requesters') {
+      containerId = 'requesterResults'; // Map 'requesters' to 'requesterResults'
+    } else {
+      containerId = `${type}Results`; // Default fallback
+    }
+    
+    console.log(`Looking for container with ID: ${containerId}`);
+    
     // Find the results container - try multiple possible selectors
-    let resultsContainer = document.getElementById(`${type}Results`);
+    let resultsContainer = document.getElementById(containerId);
     
     // If not found by ID, try other selectors
     if (!resultsContainer) {
-      console.warn(`Results container '${type}Results' not found by ID, trying alternative selectors`);
+      console.warn(`Results container '${containerId}' not found by ID, trying alternative selectors`);
       
       // Try other selectors that might match the container
       const possibleSelectors = [
         `.${type}-results`,
-        `.results-container.${type}`,
+        `.search-results[id*="${type}"]`,
+        `.search-results[id*="agent"]`, // For 'users' type
+        `.search-results[id*="requester"]`, // For 'requesters' type
         `#${type}-results`,
         `#${type}-results-container`,
         `[data-results="${type}"]`,
+        `.tab-pane.active .search-results`, // Match the actual class in HTML
         `.tab-pane.active .results-container`
       ];
       
@@ -2070,8 +2086,8 @@ function runDiagnostics() {
         if (tabPane) {
           console.log(`Found tab pane, creating results container inside it`);
           resultsContainer = document.createElement('div');
-          resultsContainer.id = `${type}Results`;
-          resultsContainer.className = 'results-container mt-3';
+          resultsContainer.id = containerId;
+          resultsContainer.className = 'search-results mt-2 shadow-sm'; // Match the classes in HTML
           tabPane.appendChild(resultsContainer);
         } else {
           // Last resort - create container in the main content area
@@ -2080,8 +2096,8 @@ function runDiagnostics() {
           
           if (mainContent) {
             resultsContainer = document.createElement('div');
-            resultsContainer.id = `${type}Results`;
-            resultsContainer.className = 'results-container mt-3';
+            resultsContainer.id = containerId;
+            resultsContainer.className = 'search-results mt-2 shadow-sm'; // Match the classes in HTML
             mainContent.appendChild(resultsContainer);
           } else {
             console.error(`Could not find any suitable parent element for results container`);
@@ -2094,6 +2110,26 @@ function runDiagnostics() {
     }
     
     console.log(`Found results container for ${type}:`, resultsContainer);
+    
+    // Verify we're not using the wrong container 
+    // (e.g., using requesterResults for agents or vice versa)
+    if (type === 'users' && resultsContainer.id === 'requesterResults') {
+      console.warn('Found requesterResults container but searching for users/agents');
+      // Try to find the correct container specifically
+      const agentContainer = document.getElementById('agentResults');
+      if (agentContainer) {
+        console.log('Found correct agentResults container');
+        resultsContainer = agentContainer;
+      }
+    } else if (type === 'requesters' && resultsContainer.id === 'agentResults') {
+      console.warn('Found agentResults container but searching for requesters');
+      // Try to find the correct container specifically
+      const requesterContainer = document.getElementById('requesterResults');
+      if (requesterContainer) {
+        console.log('Found correct requesterResults container');
+        resultsContainer = requesterContainer;
+      }
+    }
     
     // Remove search status message if it exists
     const statusMsg = document.getElementById('searchStatus');
@@ -2124,23 +2160,13 @@ function runDiagnostics() {
       return;
     }
     
-    // Show the number of results found with export button
+    // Show the number of results found without export button
     const countMessage = document.createElement('div');
-    countMessage.className = 'alert alert-success mt-2 mb-3 d-flex justify-content-between align-items-center';
+    countMessage.className = 'alert alert-success mt-2 mb-3';
     countMessage.innerHTML = `
       <span>Found ${results.length} ${type} matching your search criteria</span>
-      <button class="btn btn-sm btn-outline-success" onclick="exportToCsv('${type}')">
-        Export to CSV
-      </button>
     `;
     resultsContainer.appendChild(countMessage);
-    
-    // Store results in a global variable for export function to access
-    window.app = window.app || {};
-    window.app.lastSearchResults = {
-      type: type,
-      data: results
-    };
     
     // Define and initialize the HTML variable before using it
     let resultHtml = '<div class="search-results">';
@@ -2162,6 +2188,12 @@ function runDiagnostics() {
       const initials = getInitials(firstName, lastName);
       const active = typeof result.active === 'boolean' ? result.active : true;
       
+      // Get location and department info
+      const locationName = result.location_name || '';
+      const departmentName = result.department_names && result.department_names.length ? 
+                            result.department_names.join(', ') : 
+                            (result.department || '');
+      
       // Build additional attributes section
       let additionalAttributes = '';
       
@@ -2173,16 +2205,9 @@ function runDiagnostics() {
         return '';
       };
       
-      // Add department info from either department_ids or department
-      if (result.department_ids && Array.isArray(result.department_ids) && result.department_ids.length > 0) {
-        additionalAttributes += addBadgeIfExists('Dept IDs', result.department_ids.join(', '), 'badge-light');
-      } else if (result.department) {
-        additionalAttributes += addBadgeIfExists('Dept', result.department, 'badge-light');
-      }
-      
-      // Department names from array if available
-      if (result.department_names && Array.isArray(result.department_names) && result.department_names.length > 0) {
-        additionalAttributes += addBadgeIfExists('Departments', result.department_names.join(', '), 'badge-light');
+      // Add department info
+      if (departmentName) {
+        additionalAttributes += addBadgeIfExists('Dept', departmentName, 'badge-light');
       }
       
       // Add job title if available
@@ -2190,11 +2215,9 @@ function runDiagnostics() {
         additionalAttributes += addBadgeIfExists('Job', result.job_title, 'badge-light');
       }
       
-      // Add location if available - now handling both id and name
-      if (result.location_name) {
-        additionalAttributes += addBadgeIfExists('Location', result.location_name, 'badge-light');
-      } else if (result.location_id) {
-        additionalAttributes += addBadgeIfExists('Location ID', result.location_id, 'badge-light');
+      // Add location if available
+      if (locationName) {
+        additionalAttributes += addBadgeIfExists('Location', locationName, 'badge-light');
       }
       
       // Add phone if available - check both work and mobile
@@ -2228,38 +2251,9 @@ function runDiagnostics() {
         `;
       }
       
-      // Add created date if available
-      if (result.created_at) {
-        try {
-          const createdDate = new Date(result.created_at);
-          const formattedDate = createdDate.toLocaleDateString();
-          additionalAttributes += addBadgeIfExists('Created', formattedDate, 'badge-light');
-        } catch (error) {
-          console.warn('Error formatting date:', error);
-        }
-      }
-      
-      // Add custom fields if available
-      if (result.custom_fields && Object.keys(result.custom_fields).length > 0) {
-        for (const [key, value] of Object.entries(result.custom_fields)) {
-          if (value) {
-            additionalAttributes += addBadgeIfExists(key, value, 'badge-light');
-          }
-        }
-      }
-      
-      // Prepare text for copy to clipboard - escape single quotes
-      const copyText = `Name: ${firstName} ${lastName}
-Email: ${email}
-Type: ${type === 'users' ? 'Agent' : 'Requester'}
-${result.department_names ? 'Departments: ' + result.department_names.join(', ') : ''}
-${result.department ? 'Department: ' + result.department : ''}
-${result.job_title ? 'Job Title: ' + result.job_title : ''}
-${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace(/'/g, "\\'");
-      
-      // Build the user card with copy button
+      // Build the user card without Copy Info button
       resultHtml += `
-        <div class="user-card mb-3 border rounded p-3">
+        <div class="user-card mb-3 border rounded p-3" data-id="${result.id}">
           <div class="d-flex align-items-start">
             <div class="user-icon rounded-circle text-center text-white bg-primary mr-3" 
                  style="width: 40px; height: 40px; line-height: 40px; font-weight: bold;">
@@ -2269,9 +2263,15 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
               <div class="d-flex justify-content-between align-items-center">
                 <div class="user-name font-weight-bold">${firstName} ${lastName}</div>
                 <div>
-                  <button class="btn btn-sm btn-outline-secondary copy-btn" 
-                          onclick="copyToClipboard('${copyText}')">
-                    Copy Info
+                  <button class="btn btn-sm btn-primary select-btn" 
+                          onclick="selectUser('${type === 'users' ? 'agent' : 'requester'}', {
+                            id: ${result.id}, 
+                            name: '${(firstName + ' ' + lastName).replace(/'/g, "\\'")}',
+                            email: '${email.replace(/'/g, "\\'")}',
+                            department: '${departmentName.replace(/'/g, "\\'")}',
+                            location: '${locationName.replace(/'/g, "\\'")}'
+                          })">
+                    Select
                   </button>
                   <span class="badge badge-${active ? 'success' : 'secondary'} ml-2">
                     ${active ? 'Active' : 'Inactive'}
@@ -2301,13 +2301,7 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
     const fieldsNote = document.createElement('div');
     fieldsNote.className = 'small text-muted mt-3';
     fieldsNote.innerHTML = `
-      <p>Tip: You can use advanced query syntax for more specific searches. Examples:</p>
-      <ul class="small">
-        <li><code>job_title:'Support Specialist'</code> - Exact title match</li>
-        <li><code>department_id:123</code> - Specific department</li>
-        <li><code>~[email]:'john'</code> - Email starts with 'john'</li>
-        <li><code>active:true AND department_id:123</code> - Active users in department 123</li>
-      </ul>
+      <p>Tip: You can search by name or email, or use advanced query syntax for more specific searches.</p>
     `;
     resultsContainer.appendChild(fieldsNote);
   }
@@ -2519,168 +2513,6 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
     }
   }
 
-  // Function to export search results to CSV
-  function exportToCsv(type) {
-    // Check if we have results to export
-    if (!window.app || !window.app.lastSearchResults || 
-        window.app.lastSearchResults.type !== type ||
-        !window.app.lastSearchResults.data ||
-        window.app.lastSearchResults.data.length === 0) {
-      console.error('No search results available to export');
-      return;
-    }
-    
-    const results = window.app.lastSearchResults.data;
-    
-    try {
-      // Determine the columns to include in the CSV
-      const commonColumns = [
-        { key: 'id', label: 'ID' },
-        { key: 'first_name', label: 'First Name' },
-        { key: 'last_name', label: 'Last Name' },
-        { key: 'email', label: 'Email' },
-        { key: 'active', label: 'Active' },
-        { key: 'department', label: 'Department' },
-        { key: 'job_title', label: 'Job Title' },
-        { key: 'work_phone_number', label: 'Phone' },
-        { key: 'created_at', label: 'Created Date' }
-      ];
-      
-      // Add type-specific columns
-      const columns = type === 'users' ? 
-        [...commonColumns, { key: 'occasional', label: 'Occasional' }] : 
-        commonColumns;
-      
-      // Create CSV header row
-      let csvContent = columns.map(col => `"${col.label}"`).join(',') + '\n';
-      
-      // Add data rows
-      results.forEach(result => {
-        const row = columns.map(col => {
-          // Get the value for this column
-          const value = result[col.key];
-          
-          // Format value based on type
-          if (value === undefined || value === null) {
-            return '';
-          } else if (typeof value === 'boolean') {
-            return value ? 'true' : 'false';
-          } else if (typeof value === 'object') {
-            // Handle arrays or objects
-            return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
-          } else if (col.key === 'created_at' && value) {
-            // Format date
-            try {
-              return `"${new Date(value).toLocaleDateString()}"`;
-            } catch (e) {
-              return `"${value}"`;
-            }
-          } else {
-            // Escape quotes in strings
-            return `"${String(value).replace(/"/g, '""')}"`;
-          }
-        }).join(',');
-        
-        csvContent += row + '\n';
-      });
-      
-      // Create download link
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `freshservice_${type}_export_${new Date().toISOString().slice(0,10)}.csv`);
-      link.style.visibility = 'hidden';
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Show success notification
-      const notification = document.createElement('div');
-      notification.style.position = 'fixed';
-      notification.style.bottom = '20px';
-      notification.style.right = '20px';
-      notification.style.backgroundColor = '#28a745';
-      notification.style.color = 'white';
-      notification.style.padding = '10px 15px';
-      notification.style.borderRadius = '4px';
-      notification.style.zIndex = '9999';
-      notification.textContent = `${results.length} ${type} exported to CSV successfully`;
-      
-      document.body.appendChild(notification);
-      
-      // Auto-remove after 3 seconds
-      setTimeout(() => {
-        document.body.removeChild(notification);
-      }, 3000);
-    } catch (error) {
-      console.error('Error exporting to CSV:', error);
-      
-      // Show error notification
-      const notification = document.createElement('div');
-      notification.style.position = 'fixed';
-      notification.style.bottom = '20px';
-      notification.style.right = '20px';
-      notification.style.backgroundColor = '#dc3545';
-      notification.style.color = 'white';
-      notification.style.padding = '10px 15px';
-      notification.style.borderRadius = '4px';
-      notification.style.zIndex = '9999';
-      notification.textContent = `Error exporting to CSV: ${error.message}`;
-      
-      document.body.appendChild(notification);
-      
-      // Auto-remove after 3 seconds
-      setTimeout(() => {
-        document.body.removeChild(notification);
-      }, 3000);
-    }
-  }
-
-  // Make function available globally
-  window.exportToCsv = exportToCsv;
-
-  // Copy user info to clipboard
-  function copyToClipboard(text) {
-    // Create a temporary textarea element to hold the text
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'absolute';
-    textarea.style.left = '-9999px';
-    document.body.appendChild(textarea);
-    
-    // Select and copy the text
-    textarea.select();
-    document.execCommand('copy');
-    
-    // Remove the temporary element
-    document.body.removeChild(textarea);
-    
-    // Show feedback that text was copied
-    const notification = document.createElement('div');
-    notification.style.position = 'fixed';
-    notification.style.bottom = '20px';
-    notification.style.right = '20px';
-    notification.style.backgroundColor = '#28a745';
-    notification.style.color = 'white';
-    notification.style.padding = '10px 15px';
-    notification.style.borderRadius = '4px';
-    notification.style.zIndex = '9999';
-    notification.textContent = 'Info copied to clipboard!';
-    
-    document.body.appendChild(notification);
-    
-    // Auto-remove notification after 2 seconds
-    setTimeout(() => {
-      document.body.removeChild(notification);
-    }, 2000);
-  }
-  
-  // Make copy function available globally
-  window.copyToClipboard = copyToClipboard;
-
   // Render sample users data for testing
   function renderSampleUsers(query) {
     console.log('Rendering sample users for: ' + query);
@@ -2746,8 +2578,8 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
       // Return a promise for change-form.js to use
       return new Promise((resolve, reject) => {
         try {
-          // Encode the query for API search
-          const queryString = `~[first_name|last_name]:'${query}'`;
+          // Encode the query for API search - include email in search fields
+          const queryString = `~[first_name|last_name|email]:'${query}'`;
           const encodedQuery = encodeURIComponent(queryString);
           const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
           
@@ -2775,6 +2607,14 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
             if (data && data.agents && Array.isArray(data.agents)) {
               console.log(`Found ${data.agents.length} agents matching the query`);
               
+              // Before returning to change-form.js, we can manually update the agent/user search results
+              // This ensures they appear in the right place even if change-form.js has issues
+              const agentResults = document.getElementById('agentResults');
+              if (agentResults) {
+                // Directly render the results to the correct container
+                renderSearchResultsDirectly('agent', data.agents, agentResults);
+              }
+              
               // Return the agents array to change-form.js
               resolve(data.agents);
             } else {
@@ -2783,14 +2623,34 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
               // Check if data is in a different format
               if (data && Array.isArray(data)) {
                 console.log('Data appears to be an array directly, using as agents');
+                
+                // Direct render again
+                const agentResults = document.getElementById('agentResults');
+                if (agentResults) {
+                  renderSearchResultsDirectly('agent', data, agentResults);
+                }
+                
                 resolve(data);
               } else {
+                // Show no results message
+                const agentResults = document.getElementById('agentResults');
+                if (agentResults) {
+                  agentResults.innerHTML = '<div class="alert alert-info">No agents found</div>';
+                }
+                
                 resolve([]);
               }
             }
           })
           .catch(function(error) {
             console.error('API request failed:', error);
+            
+            // Show error in the results container
+            const agentResults = document.getElementById('agentResults');
+            if (agentResults) {
+              agentResults.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            }
+            
             reject(error);
           })
           .finally(function() {
@@ -2814,8 +2674,8 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
       // Return a promise for change-form.js to use
       return new Promise((resolve, reject) => {
         try {
-          // Encode the query for API search
-          const queryString = `~[first_name|last_name]:'${query}'`;
+          // Encode the query for API search - include email in search fields
+          const queryString = `~[first_name|last_name|email]:'${query}'`;
           const encodedQuery = encodeURIComponent(queryString);
           const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
           
@@ -2843,6 +2703,14 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
             if (data && data.requesters && Array.isArray(data.requesters)) {
               console.log(`Found ${data.requesters.length} requesters matching the query`);
               
+              // Before returning to change-form.js, we can manually update the requester search results
+              // This ensures they appear in the right place even if change-form.js has issues
+              const requesterResults = document.getElementById('requesterResults');
+              if (requesterResults) {
+                // Directly render the results to the correct container
+                renderSearchResultsDirectly('requester', data.requesters, requesterResults);
+              }
+              
               // Return the requesters array to change-form.js
               resolve(data.requesters);
             } else {
@@ -2851,14 +2719,34 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
               // Check if data is in a different format
               if (data && Array.isArray(data)) {
                 console.log('Data appears to be an array directly, using as requesters');
+                
+                // Direct render again
+                const requesterResults = document.getElementById('requesterResults');
+                if (requesterResults) {
+                  renderSearchResultsDirectly('requester', data, requesterResults);
+                }
+                
                 resolve(data);
               } else {
+                // Show no results message
+                const requesterResults = document.getElementById('requesterResults');
+                if (requesterResults) {
+                  requesterResults.innerHTML = '<div class="alert alert-info">No requesters found</div>';
+                }
+                
                 resolve([]);
               }
             }
           })
           .catch(function(error) {
             console.error('API request failed:', error);
+            
+            // Show error in the results container
+            const requesterResults = document.getElementById('requesterResults');
+            if (requesterResults) {
+              requesterResults.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            }
+            
             reject(error);
           })
           .finally(function() {
@@ -2871,6 +2759,106 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace
         }
       });
     };
+    
+    // Helper function to directly render search results to the correct container
+    function renderSearchResultsDirectly(type, results, container) {
+      if (!container) {
+        console.error(`Container for ${type} not found`);
+        return;
+      }
+      
+      if (!results || results.length === 0) {
+        container.innerHTML = '<div class="alert alert-info">No results found</div>';
+        return;
+      }
+      
+      let content = '<div class="list-group">';
+      
+      results.forEach(user => {
+        const displayName = user.first_name && user.last_name 
+          ? `${user.first_name} ${user.last_name}`
+          : (user.name || 'Unknown User');
+        
+        // Get location name if available
+        const locationName = user.location_name || '';
+        // Get department name from either department_names array or department field
+        const departmentName = user.department_names && user.department_names.length ? 
+                              user.department_names.join(', ') : 
+                              (user.department || '');
+        // Ensure we have safe values for data attributes
+        const safeEmail = (user.email || '').replace(/"/g, '&quot;');
+        const safeDept = departmentName.replace(/"/g, '&quot;');
+        const safeLocation = locationName.replace(/"/g, '&quot;');
+          
+        content += `
+          <a href="#" class="list-group-item list-group-item-action" 
+             data-id="${user.id}" 
+             data-name="${displayName.replace(/"/g, '&quot;')}" 
+             data-email="${safeEmail}" 
+             data-department="${safeDept}"
+             data-location="${safeLocation}"
+             onclick="selectUser('${type}', this.dataset)">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h5 class="mb-1">${displayName}</h5>
+                <p class="mb-1 text-primary">${safeEmail}</p>
+                <div class="small text-muted">
+                  ${departmentName ? `<span class="mr-2">Department: ${departmentName}</span>` : ''}
+                  ${locationName ? `<span>Location: ${locationName}</span>` : ''}
+                </div>
+              </div>
+              <span class="badge badge-primary badge-pill">Select</span>
+            </div>
+          </a>
+        `;
+      });
+      
+      content += '</div>';
+      container.innerHTML = content;
+      
+      // Also add code to replace the selectUser function if needed
+      if (!window.selectUser) {
+        window.selectUser = function(type, userData) {
+          console.log(`Selecting ${type} with data:`, userData);
+          
+          // Get the container for the selected user
+          const selectedContainer = document.getElementById(`selected${type.charAt(0).toUpperCase() + type.slice(1)}`);
+          if (!selectedContainer) {
+            console.error(`Container for selected ${type} not found`);
+            return;
+          }
+          
+          // Show the selected container
+          selectedContainer.classList.remove('d-none');
+          
+          // Update elements with user data
+          const nameElement = document.getElementById(`${type}Name`);
+          const emailElement = document.getElementById(`${type}Email`);
+          const deptElement = document.getElementById(`${type}Dept`);
+          
+          if (nameElement) nameElement.textContent = userData.name;
+          if (emailElement) emailElement.textContent = userData.email;
+          
+          // Update department and add location if available
+          if (deptElement) {
+            let deptText = userData.department || '';
+            
+            // Add location if available
+            if (userData.location) {
+              deptText += userData.location ? ` | Location: ${userData.location}` : '';
+            }
+            
+            deptElement.textContent = deptText;
+          }
+          
+          // Clear search results
+          const resultsContainer = document.getElementById(`${type}Results`);
+          if (resultsContainer) {
+            resultsContainer.innerHTML = '';
+          }
+        };
+      }
+    }
     
     // Also make our local render function available if needed
     window.app.renderResults = renderResults;
