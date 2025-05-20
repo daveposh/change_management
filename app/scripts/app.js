@@ -1854,193 +1854,50 @@ function runDiagnostics() {
         return;
       }
       
-      // Make sure we have a client
-      if (!window.client || !window.client.request) {
-        // Try to use direct fetch instead of client
-        console.log('Client request not available, using direct fetch');
-        directFetchUsers(query).then(resolve).catch(reject);
-        return;
-      }
-      
-      // Create Basic Auth token
-      const authToken = btoa(app.apiKey + ':X');
-      console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
-      
-      const options = {
-        headers: {
-          'Authorization': 'Basic ' + authToken,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      };
-      
-      // Build URL with proper encoding - using the exact format provided
-      // First build the query string, then encode it
-      const queryString = `~[first_name|last_name|email]:'${query}'`;
-      const encodedQuery = encodeURIComponent(queryString);
-      const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
-      console.log('Request URL:', apiUrl);
-      
-      // Make the API request with rate limiting
-      console.log('Making rate-limited API request to get agents...');
-      
-      // Use apiUtils for rate limiting if available, otherwise fall back to normal request
-      const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
-      
-      requestMethod(window.client, apiUrl, options)
-        .then(function(response) {
-          console.log('API response received, status:', response.status);
-          console.log('Full response object:', JSON.stringify(response, null, 2));
+      try {
+        // Create Basic Auth token
+        const authToken = btoa(app.apiKey + ':X');
+        console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
+        
+        // Build the query
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
+        console.log('Request URL:', apiUrl);
+        
+        // Make the API call
+        fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Basic ' + authToken,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('API response:', data);
           
-          try {
-            // Step 1: Get the actual data from the response (which might be in different formats)
-            let data;
-            
-            // Case 1: String response that needs parsing
-            if (typeof response.response === 'string') {
-              console.log('Response is a string, trying to parse as JSON');
-              data = JSON.parse(response.response);
-            } 
-            // Case 2: Response is already an object
-            else if (typeof response.response === 'object' && response.response !== null) {
-              console.log('Response is already an object');
-              data = response.response;
-            }
-            // Case 3: Response itself might be the data (direct response)
-            else if (typeof response === 'object' && response !== null && !response.response) {
-              console.log('Response appears to be the data directly');
-              data = response;
-            }
-            // Case 4: Fall back to the full response as a last resort
-            else {
-              console.log('Using full response as data');
-              data = response;
-            }
-            
-            console.log('Extracted data:', JSON.stringify(data, null, 2));
-            
-            // Step 2: Find the actual agents data, which could be in different properties
-            let agentsData = [];
-            
-            // Check for standard format with agents property
-            if (data && data.agents && Array.isArray(data.agents)) {
-              console.log(`Found agents in standard format, count: ${data.agents.length}`);
-              agentsData = data.agents;
-            }
-            // Check if the data itself is an array
-            else if (data && Array.isArray(data)) {
-              console.log('Data is an array directly, using as agents');
-              agentsData = data;
-            }
-            // Check if we need to go one level deeper (some APIs wrap in 'data' property)
-            else if (data && data.data) {
-              if (Array.isArray(data.data)) {
-                console.log('Found agents in data property, using as agents');
-                agentsData = data.data;
-              }
-              else if (data.data.agents && Array.isArray(data.data.agents)) {
-                console.log('Found agents in data.agents property');
-                agentsData = data.data.agents;
-              }
-            }
-            
-            // If we found any agents, render them
-            if (agentsData.length > 0) {
-              console.log(`Found ${agentsData.length} agents to render`);
-              renderResults('users', agentsData);
-              resolve(agentsData);
+          if (data && data.agents && Array.isArray(data.agents)) {
+            console.log(`Found ${data.agents.length} agents matching the query`);
+            renderResults('users', data.agents);
+            resolve(data.agents);
+          } else {
+            console.warn('Response contained no agents array:', data);
+            // Check if data is in a different format
+            if (data && Array.isArray(data)) {
+              console.log('Data appears to be an array directly, using as agents');
+              renderResults('users', data);
+              resolve(data);
             } else {
-              console.log('No agents found in any expected location');
-              // Check one more time through all properties to find arrays that might be agents
-              let foundArray = false;
-              
-              if (typeof data === 'object' && data !== null) {
-                // Look through all properties for arrays
-                for (const key in data) {
-                  if (Array.isArray(data[key]) && data[key].length > 0 && 
-                      // Check if array items look like agents (have typical agent properties)
-                      (data[key][0].email || data[key][0].first_name || data[key][0].last_name)) {
-                    console.log(`Found possible agents array in '${key}' property`);
-                    agentsData = data[key];
-                    foundArray = true;
-                    break;
-                  }
-                }
-              }
-              
-              if (foundArray) {
-                renderResults('users', agentsData);
-                resolve(agentsData);
-              } else {
-                console.warn('No agents found in response');
-                renderResults('users', []);
-                resolve([]);
-              }
+              renderResults('users', []);
+              resolve([]);
             }
-          } catch (error) {
-            console.error('Error processing API response:', error);
-            console.error('Failed response:', response);
-            
-            // Even if we fail to parse, try to show the raw data
-            let errorMessage = `Error processing response: ${error.message}`;
-            let responseText = '';
-            
-            try {
-              // Try to get some useful information from the response
-              if (response && response.response) {
-                if (typeof response.response === 'string') {
-                  responseText = response.response.substring(0, 100) + '...';
-                } else if (typeof response.response === 'object') {
-                  responseText = JSON.stringify(response.response).substring(0, 100) + '...';
-                }
-              }
-              
-              if (responseText) {
-                console.log('Response preview:', responseText);
-                // Don't reject, try to work with the data we have
-                let dataToRender = [];
-                
-                if (responseText.includes('email') || responseText.includes('first_name')) {
-                  try {
-                    // Last attempt to extract usable data
-                    if (typeof response.response === 'string') {
-                      dataToRender = JSON.parse(response.response);
-                      if (!Array.isArray(dataToRender)) {
-                        // Navigate through common object structures to find agents
-                        if (dataToRender.agents) dataToRender = dataToRender.agents;
-                        else if (dataToRender.data && Array.isArray(dataToRender.data)) {
-                          dataToRender = dataToRender.data;
-                        }
-                        else if (dataToRender.data && dataToRender.data.agents) {
-                          dataToRender = dataToRender.data.agents;
-                        }
-                        // If still not an array but looks like a single agent, wrap it
-                        else if (dataToRender.email || dataToRender.first_name) {
-                          dataToRender = [dataToRender];
-                        }
-                        else {
-                          dataToRender = [];
-                        }
-                      }
-                    }
-                    
-                    if (dataToRender && dataToRender.length > 0) {
-                      console.log('Recovered data from error situation:', dataToRender);
-                      renderResults('users', dataToRender);
-                      return resolve(dataToRender);
-                    }
-                  } catch (e) {
-                    console.error('Failed recovery attempt:', e);
-                  }
-                }
-              }
-            } catch (e) {
-              console.error('Error in error handling:', e);
-            }
-            
-            showError(errorMessage);
-            renderResults('users', []);
-            resolve([]);  // Resolve empty instead of rejecting
           }
         })
         .catch(function(error) {
@@ -2049,24 +1906,12 @@ function runDiagnostics() {
           // Add more detailed debugging - log the complete error object
           console.log('Complete error object:', JSON.stringify(error));
           
-          // If we have headers or response text, log those too
-          if (error.headers) {
-            console.log('Error response headers:', error.headers);
-          }
-          
-          // Try to access response text if available
-          if (error.responseText) {
-            console.log('Error response text:', error.responseText);
-          }
-          
           let errorMessage = 'API request failed';
           if (error.status) {
             errorMessage += ` (Status: ${error.status})`;
           }
           if (error.message) {
             errorMessage += `: ${error.message}`;
-          } else if (error.statusText) {
-            errorMessage += `: ${error.statusText}`;
           }
           
           showError(errorMessage);
@@ -2079,10 +1924,17 @@ function runDiagnostics() {
         .finally(function() {
           toggleSpinner(false);
         });
+      } catch (error) {
+        console.error('Error in search:', error);
+        showError(`Error making API request: ${error.message}`);
+        const sampleData = renderSampleUsers(query);
+        resolve(sampleData);
+        toggleSpinner(false);
+      }
     });
   }
   
-  // Fallback to use direct fetch instead of client
+    // Fallback to use direct fetch instead of client
   function directFetchUsers(query) {
     return new Promise((resolve) => {
       console.log('Using direct fetch for users search');
@@ -2108,531 +1960,21 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query using the exact format provided
+        // Build the query
         const queryString = `~[first_name|last_name|email]:'${query}'`;
         const encodedQuery = encodeURIComponent(queryString);
         const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
-                  // Try to use rate-limited client.request if available
-          if (window.client && window.client.request) {
-            const options = {
-              headers: {
-                'Authorization': 'Basic ' + authToken,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              }
-            };
-            
-            // Use apiUtils for rate limiting if available
-            const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
-            requestMethod(window.client, apiUrl, options)
-            .then(response => {
-              console.log('Client request response:', response);
-              
-              // Parse the response which could be in different formats
-              let data;
-              if (typeof response.response === 'string') {
-                data = JSON.parse(response.response);
-              } else if (typeof response.response === 'object') {
-                data = response.response;
-              } else {
-                data = response;
-              }
-              
-              if (data && data.agents && Array.isArray(data.agents)) {
-                console.log(`Found ${data.agents.length} agents matching the query`);
-                renderResults('users', data.agents);
-                resolve(data.agents);
-              } else {
-                console.warn('Response contained no agents array:', data);
-                // Check if data is in a different format
-                if (data && Array.isArray(data)) {
-                  console.log('Data appears to be an array directly, using as agents');
-                  renderResults('users', data);
-                  resolve(data);
-                } else {
-                  renderResults('users', []);
-                  resolve([]);
-                }
-              }
-            })
-            .catch(error => {
-              console.error('Client request error:', error);
-              
-              // Show detailed error message
-              const errorMessage = 'API request failed' + (error.message ? `: ${error.message}` : '');
-              showError(errorMessage);
-              
-              console.log('Falling back to sample data');
-              const sampleData = renderSampleUsers(query);
-              resolve(sampleData);
-            })
-            .finally(() => {
-              toggleSpinner(false);
-            });
-        } else {
-          // Fallback to rate-limited fetch if client.request is not available
-          const fetchMethod = window.apiUtils?.fetch || fetch;
-          const options = {
-            method: 'GET',
-            headers: {
-              'Authorization': 'Basic ' + authToken,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          };
-          
-          fetchMethod(apiUrl, options)
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-          })
-          .then(data => {
-            console.log('Direct fetch response:', data);
-            
-            if (data && data.agents && Array.isArray(data.agents)) {
-              console.log(`Found ${data.agents.length} agents matching the query`);
-              renderResults('users', data.agents);
-              resolve(data.agents);
-            } else {
-              console.warn('Response contained no agents array:', data);
-              // Check if data is in a different format
-              if (data && Array.isArray(data)) {
-                console.log('Data appears to be an array directly, using as agents');
-                renderResults('users', data);
-                resolve(data);
-              } else {
-                renderResults('users', []);
-                resolve([]);
-              }
-            }
-          })
-          .catch(error => {
-            console.error('Direct fetch error:', error);
-            
-            // Show detailed error message
-            const errorMessage = 'API request failed' + (error.message ? `: ${error.message}` : '');
-            showError(errorMessage);
-            
-            console.log('Falling back to sample data');
-            const sampleData = renderSampleUsers(query);
-            resolve(sampleData);
-          })
-          .finally(() => {
-            toggleSpinner(false);
-          });
-        }
-      } catch (error) {
-        console.error('Error in direct fetch:', error);
-        showError(`Error making API request: ${error.message}`);
-        const sampleData = renderSampleUsers(query);
-        resolve(sampleData);
-        toggleSpinner(false);
-      }
-    });
-  }
-  
-  // Render sample users data for testing
-  function renderSampleUsers(query) {
-    console.log('Rendering sample users for: ' + query);
-    
-    // Generate fake users based on query
-    const sampleUsers = [
-      {
-        first_name: 'John',
-        last_name: 'Smith',
-        email: 'john.smith@example.com',
-        active: true,
-        department: 'IT'
-      },
-      {
-        first_name: 'Jane',
-        last_name: 'Doe',
-        email: 'jane.doe@example.com',
-        active: true,
-        department: 'HR'
-      },
-      {
-        first_name: 'Alex',
-        last_name: 'Johnson',
-        email: 'alex.johnson@example.com',
-        active: true,
-        department: 'Finance'
-      }
-    ];
-    
-    // Check if query matches any sample users
-    const filteredUsers = sampleUsers.filter(user => {
-      const fullName = (user.first_name + ' ' + user.last_name).toLowerCase();
-      const email = user.email.toLowerCase();
-      const searchTerm = query.toLowerCase();
-      
-      return fullName.includes(searchTerm) || email.includes(searchTerm);
-    });
-    
-    renderResults('users', filteredUsers);
-    toggleSpinner(false);
-    
-    return filteredUsers;
-  }
-  
-  // Search for requesters via Freshservice API
-  function searchRequesters(query) {
-    return new Promise((resolve, reject) => {
-      // Check if API URL and key are available
-      if (!app.apiUrl || !app.apiKey) {
-        showError('API configuration is missing. Please check app installation parameters.');
-        const sampleData = renderSampleRequesters(query);
-        resolve(sampleData);
-        return;
-      }
-      
-      console.log('Searching requesters with query:', query);
-      console.log('Using API URL:', app.apiUrl);
-      
-      // Validate API URL
-      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
-        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
-        const sampleData = renderSampleRequesters(query);
-        resolve(sampleData);
-        return;
-      }
-      
-      // Make sure we have a client
-      if (!window.client || !window.client.request) {
-        // Try to use direct fetch instead of client
-        console.log('Client request not available, using direct fetch');
-        directFetchRequesters(query).then(resolve).catch(reject);
-        return;
-      }
-      
-      // Create Basic Auth token
-      const authToken = btoa(app.apiKey + ':X');
-      console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
-      
-      const options = {
-        headers: {
-          'Authorization': 'Basic ' + authToken,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      };
-      
-      // Build URL with proper encoding - using the exact format provided
-      // First build the query string, then encode it
-      const queryString = `~[first_name|last_name|email]:'${query}'`;
-      const encodedQuery = encodeURIComponent(queryString);
-      const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
-      console.log('Request URL:', apiUrl);
-      
-      // Make the API request with rate limiting
-      console.log('Making rate-limited API request to get requesters...');
-      
-      // Use apiUtils for rate limiting if available, otherwise fall back to normal request
-      const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
-      
-      requestMethod(window.client, apiUrl, options)
-        .then(function(response) {
-          console.log('API response received, status:', response.status);
-          console.log('Full response object:', JSON.stringify(response, null, 2));
-          
-          try {
-            // Step 1: Get the actual data from the response (which might be in different formats)
-            let data;
-            
-            // Case 1: String response that needs parsing
-            if (typeof response.response === 'string') {
-              console.log('Response is a string, trying to parse as JSON');
-              data = JSON.parse(response.response);
-            } 
-            // Case 2: Response is already an object
-            else if (typeof response.response === 'object' && response.response !== null) {
-              console.log('Response is already an object');
-              data = response.response;
-            }
-            // Case 3: Response itself might be the data (direct response)
-            else if (typeof response === 'object' && response !== null && !response.response) {
-              console.log('Response appears to be the data directly');
-              data = response;
-            }
-            // Case 4: Fall back to the full response as a last resort
-            else {
-              console.log('Using full response as data');
-              data = response;
-            }
-            
-            console.log('Extracted data:', JSON.stringify(data, null, 2));
-            
-            // Step 2: Find the actual requesters data, which could be in different properties
-            let requestersData = [];
-            
-            // Check for standard format with requesters property
-            if (data && data.requesters && Array.isArray(data.requesters)) {
-              console.log(`Found requesters in standard format, count: ${data.requesters.length}`);
-              requestersData = data.requesters;
-            }
-            // Check if the data itself is an array
-            else if (data && Array.isArray(data)) {
-              console.log('Data is an array directly, using as requesters');
-              requestersData = data;
-            }
-            // Check if we need to go one level deeper (some APIs wrap in 'data' property)
-            else if (data && data.data) {
-              if (Array.isArray(data.data)) {
-                console.log('Found requesters in data property, using as requesters');
-                requestersData = data.data;
-              }
-              else if (data.data.requesters && Array.isArray(data.data.requesters)) {
-                console.log('Found requesters in data.requesters property');
-                requestersData = data.data.requesters;
-              }
-            }
-            
-            // If we found any requesters, render them
-            if (requestersData.length > 0) {
-              console.log(`Found ${requestersData.length} requesters to render`);
-              renderResults('requesters', requestersData);
-              resolve(requestersData);
-            } else {
-              console.log('No requesters found in any expected location');
-              // Check one more time through all properties to find arrays that might be requesters
-              let foundArray = false;
-              
-              if (typeof data === 'object' && data !== null) {
-                // Look through all properties for arrays
-                for (const key in data) {
-                  if (Array.isArray(data[key]) && data[key].length > 0 && 
-                      // Check if array items look like requesters (have typical requester properties)
-                      (data[key][0].email || data[key][0].first_name || data[key][0].last_name)) {
-                    console.log(`Found possible requesters array in '${key}' property`);
-                    requestersData = data[key];
-                    foundArray = true;
-                    break;
-                  }
-                }
-              }
-              
-              if (foundArray) {
-                renderResults('requesters', requestersData);
-                resolve(requestersData);
-              } else {
-                console.warn('No requesters found in response');
-                renderResults('requesters', []);
-                resolve([]);
-              }
-            }
-          } catch (error) {
-            console.error('Error processing API response:', error);
-            console.error('Failed response:', response);
-            
-            // Even if we fail to parse, try to show the raw data
-            let errorMessage = `Error processing response: ${error.message}`;
-            let responseText = '';
-            
-            try {
-              // Try to get some useful information from the response
-              if (response && response.response) {
-                if (typeof response.response === 'string') {
-                  responseText = response.response.substring(0, 100) + '...';
-                } else if (typeof response.response === 'object') {
-                  responseText = JSON.stringify(response.response).substring(0, 100) + '...';
-                }
-              }
-              
-              if (responseText) {
-                console.log('Response preview:', responseText);
-                // Don't reject, try to work with the data we have
-                let dataToRender = [];
-                
-                if (responseText.includes('email') || responseText.includes('first_name')) {
-                  try {
-                    // Last attempt to extract usable data
-                    if (typeof response.response === 'string') {
-                      dataToRender = JSON.parse(response.response);
-                      if (!Array.isArray(dataToRender)) {
-                        // Navigate through common object structures to find requesters
-                        if (dataToRender.requesters) dataToRender = dataToRender.requesters;
-                        else if (dataToRender.data && Array.isArray(dataToRender.data)) {
-                          dataToRender = dataToRender.data;
-                        }
-                        else if (dataToRender.data && dataToRender.data.requesters) {
-                          dataToRender = dataToRender.data.requesters;
-                        }
-                        // If still not an array but looks like a single requester, wrap it
-                        else if (dataToRender.email || dataToRender.first_name) {
-                          dataToRender = [dataToRender];
-                        }
-                        else {
-                          dataToRender = [];
-                        }
-                      }
-                    }
-                    
-                    if (dataToRender && dataToRender.length > 0) {
-                      console.log('Recovered data from error situation:', dataToRender);
-                      renderResults('requesters', dataToRender);
-                      return resolve(dataToRender);
-                    }
-                  } catch (e) {
-                    console.error('Failed recovery attempt:', e);
-                  }
-                }
-              }
-            } catch (e) {
-              console.error('Error in error handling:', e);
-            }
-            
-            showError(errorMessage);
-            renderResults('requesters', []);
-            resolve([]);  // Resolve empty instead of rejecting
-          }
-        })
-        .catch(function(error) {
-          console.error('API request failed:', error);
-          
-          // Add more detailed debugging - log the complete error object
-          console.log('Complete error object:', JSON.stringify(error));
-          
-          // If we have headers or response text, log those too
-          if (error.headers) {
-            console.log('Error response headers:', error.headers);
-          }
-          
-          // Try to access response text if available
-          if (error.responseText) {
-            console.log('Error response text:', error.responseText);
-          }
-          
-          let errorMessage = 'API request failed';
-          if (error.status) {
-            errorMessage += ` (Status: ${error.status})`;
-          }
-          if (error.message) {
-            errorMessage += `: ${error.message}`;
-          } else if (error.statusText) {
-            errorMessage += `: ${error.statusText}`;
-          }
-          
-          showError(errorMessage);
-          
-          // Always fall back to sample data if the API call fails
-          console.log('API call failed, falling back to sample data');
-          const sampleData = renderSampleRequesters(query);
-          resolve(sampleData);
-        })
-        .finally(function() {
-          toggleSpinner(false);
-        });
-    });
-  }
-  
-  // Fallback to use direct fetch instead of client
-  function directFetchRequesters(query) {
-    return new Promise((resolve) => {
-      console.log('Using direct fetch for requesters search');
-      toggleSpinner(true);
-      
-      if (!app.apiUrl || !app.apiKey) {
-        console.log('API configuration missing, using sample data');
-        const sampleData = renderSampleRequesters(query);
-        resolve(sampleData);
-        return;
-      }
-      
-      // Validate API URL
-      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
-        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
-        const sampleData = renderSampleRequesters(query);
-        resolve(sampleData);
-        toggleSpinner(false);
-        return;
-      }
-      
-      try {
-        // Create auth token
-        const authToken = btoa(app.apiKey + ':X');
-        
-        // Build the query using the exact format provided
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
-        const encodedQuery = encodeURIComponent(queryString);
-        const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
-        console.log('Direct fetch URL:', apiUrl);
-        
-        // Try to use rate-limited client.request if available
-        if (window.client && window.client.request) {
-          const options = {
-            headers: {
-              'Authorization': 'Basic ' + authToken,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          };
-          
-          // Use apiUtils for rate limiting if available
-          const requestMethod = window.apiUtils?.get || window.client.request.get.bind(window.client.request);
-          requestMethod(window.client, apiUrl, options)
-            .then(response => {
-              console.log('Client request response:', response);
-              
-              // Parse the response which could be in different formats
-              let data;
-              if (typeof response.response === 'string') {
-                data = JSON.parse(response.response);
-              } else if (typeof response.response === 'object') {
-                data = response.response;
-              } else {
-                data = response;
-              }
-              
-              if (data && data.requesters && Array.isArray(data.requesters)) {
-                console.log(`Found ${data.requesters.length} requesters matching the query`);
-                renderResults('requesters', data.requesters);
-                resolve(data.requesters);
-              } else {
-                console.warn('Response contained no requesters array:', data);
-                // Check if data is in a different format
-                if (data && Array.isArray(data)) {
-                  console.log('Data appears to be an array directly, using as requesters');
-                  renderResults('requesters', data);
-                  resolve(data);
-                } else {
-                  renderResults('requesters', []);
-                  resolve([]);
-                }
-              }
-            })
-            .catch(error => {
-              console.error('Client request error:', error);
-              
-              // Show detailed error message
-              const errorMessage = 'API request failed' + (error.message ? `: ${error.message}` : '');
-              showError(errorMessage);
-              
-              console.log('Falling back to sample data');
-              const sampleData = renderSampleRequesters(query);
-              resolve(sampleData);
-            })
-            .finally(() => {
-              toggleSpinner(false);
-            });
-          return;
-        }
-        
-        // Fallback to rate-limited fetch API if client.request is not available
-        const fetchMethod = window.apiUtils?.fetch || fetch;
-        const options = {
+        // Make the API call
+        fetch(apiUrl, {
           method: 'GET',
           headers: {
             'Authorization': 'Basic ' + authToken,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           }
-        };
-        
-        fetchMethod(apiUrl, options)
+        })
         .then(response => {
           if (!response.ok) {
             throw new Error(`API request failed: ${response.status} ${response.statusText}`);
@@ -2642,12 +1984,12 @@ function runDiagnostics() {
         .then(data => {
           console.log('Direct fetch response:', data);
           
-          if (data && data.requesters && Array.isArray(data.requesters)) {
-            console.log(`Found ${data.requesters.length} requesters matching the query`);
-            renderResults('requesters', data.requesters);
-            resolve(data.requesters);
+          if (data && data.agents && Array.isArray(data.agents)) {
+            console.log(`Found ${data.agents.length} agents matching the query`);
+            renderResults('users', data.agents);
+            resolve(data.agents);
           } else {
-            console.warn('Response contained no requesters array:', data);
+            console.warn('Response contained no agents array:', data);
             // Check if data is in a different format
             if (data && Array.isArray(data)) {
               console.log('Data appears to be an array directly, using as requesters');
@@ -3246,4 +2588,48 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
 
   // Make function available globally
   window.exportToCsv = exportToCsv;
+
+  // Render sample users data for testing
+  function renderSampleUsers(query) {
+    console.log('Rendering sample users for: ' + query);
+    
+    // Generate fake users based on query
+    const sampleUsers = [
+      {
+        first_name: 'John',
+        last_name: 'Smith',
+        email: 'john.smith@example.com',
+        active: true,
+        department: 'IT'
+      },
+      {
+        first_name: 'Jane',
+        last_name: 'Doe',
+        email: 'jane.doe@example.com',
+        active: true,
+        department: 'HR'
+      },
+      {
+        first_name: 'Alex',
+        last_name: 'Johnson',
+        email: 'alex.johnson@example.com',
+        active: true,
+        department: 'Finance'
+      }
+    ];
+    
+    // Check if query matches any sample users
+    const filteredUsers = sampleUsers.filter(user => {
+      const fullName = (user.first_name + ' ' + user.last_name).toLowerCase();
+      const email = user.email.toLowerCase();
+      const searchTerm = query.toLowerCase();
+      
+      return fullName.includes(searchTerm) || email.includes(searchTerm);
+    });
+    
+    renderResults('users', filteredUsers);
+    toggleSpinner(false);
+    
+    return filteredUsers;
+  }
 })();
