@@ -2034,13 +2034,66 @@ function runDiagnostics() {
   
   // Render search results
   function renderResults(type, results) {
-    const resultsContainer = document.getElementById(`${type}Results`);
+    console.log(`Attempting to render ${results.length} ${type} results`);
     
-    // Check if results container exists
+    // Find the results container - try multiple possible selectors
+    let resultsContainer = document.getElementById(`${type}Results`);
+    
+    // If not found by ID, try other selectors
     if (!resultsContainer) {
-      console.error(`Results container '${type}Results' not found`);
-      return;
+      console.warn(`Results container '${type}Results' not found by ID, trying alternative selectors`);
+      
+      // Try other selectors that might match the container
+      const possibleSelectors = [
+        `.${type}-results`,
+        `.results-container.${type}`,
+        `#${type}-results`,
+        `#${type}-results-container`,
+        `[data-results="${type}"]`,
+        `.tab-pane.active .results-container`
+      ];
+      
+      for (const selector of possibleSelectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          console.log(`Found results container using selector: ${selector}`);
+          resultsContainer = element;
+          break;
+        }
+      }
+      
+      // If still not found, try to create a container
+      if (!resultsContainer) {
+        console.warn(`No results container found, attempting to create one`);
+        const tabPane = document.querySelector(`.tab-pane.active, #${type}-tab-pane`);
+        
+        if (tabPane) {
+          console.log(`Found tab pane, creating results container inside it`);
+          resultsContainer = document.createElement('div');
+          resultsContainer.id = `${type}Results`;
+          resultsContainer.className = 'results-container mt-3';
+          tabPane.appendChild(resultsContainer);
+        } else {
+          // Last resort - create container in the main content area
+          console.warn(`No tab pane found, creating results container in main content`);
+          const mainContent = document.querySelector('.container, main, #app, body');
+          
+          if (mainContent) {
+            resultsContainer = document.createElement('div');
+            resultsContainer.id = `${type}Results`;
+            resultsContainer.className = 'results-container mt-3';
+            mainContent.appendChild(resultsContainer);
+          } else {
+            console.error(`Could not find any suitable parent element for results container`);
+            // Show error with showError instead of alert
+            showError(`Could not render ${type} results. No suitable container found.`);
+            return;
+          }
+        }
+      }
     }
+    
+    console.log(`Found results container for ${type}:`, resultsContainer);
     
     // Remove search status message if it exists
     const statusMsg = document.getElementById('searchStatus');
@@ -2195,14 +2248,14 @@ function runDiagnostics() {
         }
       }
       
-      // Prepare text for copy to clipboard
+      // Prepare text for copy to clipboard - escape single quotes
       const copyText = `Name: ${firstName} ${lastName}
 Email: ${email}
 Type: ${type === 'users' ? 'Agent' : 'Requester'}
 ${result.department_names ? 'Departments: ' + result.department_names.join(', ') : ''}
 ${result.department ? 'Department: ' + result.department : ''}
 ${result.job_title ? 'Job Title: ' + result.job_title : ''}
-${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
+${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`.replace(/'/g, "\\'");
       
       // Build the user card with copy button
       resultHtml += `
@@ -2217,7 +2270,7 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
                 <div class="user-name font-weight-bold">${firstName} ${lastName}</div>
                 <div>
                   <button class="btn btn-sm btn-outline-secondary copy-btn" 
-                          onclick="copyToClipboard('${copyText.replace(/'/g, "\\'")}')">
+                          onclick="copyToClipboard('${copyText}')">
                     Copy Info
                   </button>
                   <span class="badge badge-${active ? 'success' : 'secondary'} ml-2">
@@ -2671,4 +2724,158 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
     
     return filteredUsers;
   }
+
+  // Intentionally empty for readability
+  
+  // Integration with change-form.js
+  function integrateWithChangeForm() {
+    console.log('Setting up integration with change-form.js');
+    
+    // Export our search functions to the app object for change-form.js to access
+    if (!window.app) {
+      window.app = {};
+    }
+    
+    // Make our search functions available on the app object
+    window.app.searchUsers = function(query) {
+      console.log('app.searchUsers called with query:', query);
+      
+      // Show loading spinner
+      toggleSpinner(true);
+      
+      // Return a promise for change-form.js to use
+      return new Promise((resolve, reject) => {
+        try {
+          // Encode the query for API search
+          const queryString = `~[first_name|last_name]:'${query}'`;
+          const encodedQuery = encodeURIComponent(queryString);
+          const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
+          
+          // Create Basic Auth token
+          const authToken = btoa(app.apiKey + ':X');
+          
+          // Make the API call
+          fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('API response:', data);
+            
+            if (data && data.agents && Array.isArray(data.agents)) {
+              console.log(`Found ${data.agents.length} agents matching the query`);
+              
+              // Return the agents array to change-form.js
+              resolve(data.agents);
+            } else {
+              console.warn('Response contained no agents array:', data);
+              
+              // Check if data is in a different format
+              if (data && Array.isArray(data)) {
+                console.log('Data appears to be an array directly, using as agents');
+                resolve(data);
+              } else {
+                resolve([]);
+              }
+            }
+          })
+          .catch(function(error) {
+            console.error('API request failed:', error);
+            reject(error);
+          })
+          .finally(function() {
+            toggleSpinner(false);
+          });
+        } catch (error) {
+          console.error('Error in search:', error);
+          toggleSpinner(false);
+          reject(error);
+        }
+      });
+    };
+    
+    // Similar function for requesters
+    window.app.searchRequesters = function(query) {
+      console.log('app.searchRequesters called with query:', query);
+      
+      // Show loading spinner
+      toggleSpinner(true);
+      
+      // Return a promise for change-form.js to use
+      return new Promise((resolve, reject) => {
+        try {
+          // Encode the query for API search
+          const queryString = `~[first_name|last_name]:'${query}'`;
+          const encodedQuery = encodeURIComponent(queryString);
+          const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
+          
+          // Create Basic Auth token
+          const authToken = btoa(app.apiKey + ':X');
+          
+          // Make the API call
+          fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('API response:', data);
+            
+            if (data && data.requesters && Array.isArray(data.requesters)) {
+              console.log(`Found ${data.requesters.length} requesters matching the query`);
+              
+              // Return the requesters array to change-form.js
+              resolve(data.requesters);
+            } else {
+              console.warn('Response contained no requesters array:', data);
+              
+              // Check if data is in a different format
+              if (data && Array.isArray(data)) {
+                console.log('Data appears to be an array directly, using as requesters');
+                resolve(data);
+              } else {
+                resolve([]);
+              }
+            }
+          })
+          .catch(function(error) {
+            console.error('API request failed:', error);
+            reject(error);
+          })
+          .finally(function() {
+            toggleSpinner(false);
+          });
+        } catch (error) {
+          console.error('Error in search:', error);
+          toggleSpinner(false);
+          reject(error);
+        }
+      });
+    };
+    
+    // Also make our local render function available if needed
+    window.app.renderResults = renderResults;
+  }
+  
+  // Initialize the integration
+  integrateWithChangeForm();
 })();
