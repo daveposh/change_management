@@ -144,3 +144,14 @@ SOFTWARE.
 
 - [Bootstrap](https://getbootstrap.com/) - Used for UI components
 - [Freshworks App Development](https://developers.freshworks.com/) - Framework and guidelines
+
+## Known Issues and Future Improvements
+
+The following code improvements should be addressed before production deployment:
+
+1. Reduce function complexity to meet Freshworks standards (several functions exceed the max complexity of 7)
+2. Replace direct API calls with client.request pattern
+3. Fix potential race conditions in asynchronous code
+4. Address deprecated API usage
+
+For detailed information about these issues, run `fdk validate` to see the full list of warnings.
