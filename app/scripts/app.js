@@ -46,15 +46,17 @@ window.addEventListener('securitypolicyviolation', function(e) {
   const forceDevMode = urlParams.get('dev') === 'true';
   const apiUrlParam = urlParams.get('api_url');
   const apiKeyParam = urlParams.get('api_key');
+  const appTitleParam = urlParams.get('app_title');
   
   if (forceDevMode) {
     console.log('Development mode forced via URL parameter');
     // Store parameters from URL if provided
-    if (apiUrlParam || apiKeyParam) {
-      console.log('API parameters detected in URL');
-      window.__DEV_PARAMS__ = {};
+    if (apiUrlParam || apiKeyParam || appTitleParam) {
+      console.log('Configuration parameters detected in URL');
+      window.__DEV_PARAMS__ = window.__DEV_PARAMS__ || {};
       if (apiUrlParam) window.__DEV_PARAMS__.api_url = apiUrlParam;
       if (apiKeyParam) window.__DEV_PARAMS__.api_key = apiKeyParam;
+      if (appTitleParam) window.__DEV_PARAMS__.app_title = appTitleParam;
     }
   }
 })();
@@ -137,8 +139,8 @@ function createFakeClient() {
         console.log('Fake client: iparams.get called');
         
         return Promise.resolve({
-          api_url: 'https://cxi-cxi-test.freshservice.com',
-          api_key: 'x3UMem6baBuhldFQe2ha'
+          api_url: window.__DEV_PARAMS__?.api_url || 'https://example.freshservice.com',
+          api_key: window.__DEV_PARAMS__?.api_key || 'dev-placeholder-key'
         });
       }
     },
@@ -183,8 +185,8 @@ function createFakeClient() {
           
           // Return your sandbox credentials
           return Promise.resolve({
-            api_url: 'https://cxi-cxi-test.freshservice.com',
-            api_key: 'x3UMem6baBuhldFQe2ha'
+            api_url: window.__DEV_PARAMS__?.api_url || 'https://example.freshservice.com',
+            api_key: window.__DEV_PARAMS__?.api_key || 'dev-placeholder-key'
           });
         }
       },
@@ -192,8 +194,8 @@ function createFakeClient() {
         get: function(url) {
           console.log('Dev client: Making real API call to:', url);
           
-          // Create options with basic auth header
-          const apiKey = 'x3UMem6baBuhldFQe2ha'; // Your sandbox API key
+          // Get API key from dev params
+          const apiKey = window.__DEV_PARAMS__?.api_key || 'dev-placeholder-key';
           const authToken = btoa(apiKey + ':X');
           
           // Make a real fetch call to the Freshservice API
@@ -349,10 +351,16 @@ function createFakeClient() {
     if (client && client.iparams && typeof client.iparams.get === 'function') {
       loadApiConfiguration(client);
     } else {
-      // For mock client, try using default values
-      app.apiUrl = 'https://cxi-cxi-test.freshservice.com';
-      console.log('Using default API URL:', app.apiUrl);
-      showWarning('Using default API configuration. Contact administrator if search doesn\'t work.');
+      // For mock client, try using dev params if available
+      app.apiUrl = window.__DEV_PARAMS__?.api_url || 'https://example.freshservice.com';
+      app.apiKey = window.__DEV_PARAMS__?.api_key || '';
+      app.appTitle = window.__DEV_PARAMS__?.app_title || 'CXI Change Management';
+      
+      // Update the UI with the title
+      updateAppTitle(app.appTitle);
+      
+      console.log('Using development configuration:', { apiUrl: app.apiUrl, appTitle: app.appTitle });
+      showWarning('Using development configuration. Contact administrator if search doesn\'t work.');
     }
   }
   
@@ -407,7 +415,14 @@ function createFakeClient() {
           // Store the processed values
           app.apiUrl = apiUrl;
           app.apiKey = apiKey;
-          console.log('API configuration loaded successfully:', { apiUrl: app.apiUrl, hasApiKey: !!app.apiKey });
+          
+          // Set the app title from configuration if available
+          if (data.app_title) {
+            app.appTitle = data.app_title;
+            updateAppTitle(data.app_title);
+          }
+          
+          console.log('API configuration loaded successfully:', { apiUrl: app.apiUrl, hasApiKey: !!app.apiKey, appTitle: app.appTitle });
         } else {
           console.error('Missing API parameters in configuration');
           showError('API configuration is incomplete. Please check installation parameters.');
@@ -1055,5 +1070,16 @@ function createFakeClient() {
         ${displayMessage}
       </div>
     `;
+  }
+  
+  // Update the application title displayed on the page
+  function updateAppTitle(title) {
+    const titleElement = document.getElementById('appTitle');
+    if (titleElement) {
+      titleElement.textContent = title || 'CXI Change Management';
+      console.log('Application title updated to:', title);
+    } else {
+      console.error('Title element not found in the DOM');
+    }
   }
 })();

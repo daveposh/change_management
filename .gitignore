@@ -1,7 +1,63 @@
-.fdk/
-log/
-.report.json
-node_modules/
-fdk.log
-dist/
+.DS_Store
+**/.fdk/**
+**/coverage/**
+**/.report.json
+**/.vscode/**
+**/node_modules/**
+**/test_data/**
+**/dist/**
+config/oauth_config.json
+config/iparams_test_data.json
+log/**/*
 
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Dependency directories
+node_modules/
+jspm_packages/
+bower_components/
+
+# Build outputs
+dist/
+build/
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# FDK specific files
+.fdk/
+.report.json
+config/oauth_config.json
+config/iparams_test_data.json
+test_data/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

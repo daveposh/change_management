@@ -12,5 +12,13 @@
     "type": "text",
     "required": true,
     "secure": true
+  },
+  "app_title": {
+    "display_name": "Application Title",
+    "description": "Enter the title to be displayed on the application header",
+    "type": "text",
+    "required": true,
+    "secure": false,
+    "default_value": "CompanyName Change Management"
   }
 }

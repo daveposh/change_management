@@ -6,7 +6,7 @@
         "full_page_app": {
           "url": "index.html",
           "icon": "styles/images/icon.svg",
-          "label": "User Search"
+          "label": "Change Management"
         }
       }
     }
@@ -15,6 +15,9 @@
     "node": "18.19.1",
     "fdk": "9.4.2"
   },
+  "whitelisted-domains": [
+    "https://*.freshservice.com"
+  ],
   "development": {
     "pack": {
       "skip_test_coverage": true

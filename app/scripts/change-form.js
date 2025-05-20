@@ -334,8 +334,13 @@ function fetchAgentGroups() {
     return renderSampleGroups();
   }
   
-  // API path for agent groups
-  const url = '/api/v2/groups';
+  // Get API endpoints from window.app configuration
+  if (!window.app || !window.app.endpoints || !window.app.endpoints.groups) {
+    console.error('API endpoint configuration not available');
+    return directFetchGroups();
+  }
+  
+  const url = window.app.endpoints.groups;
   
   // Use client to make API call
   client.request.get(url)
@@ -365,43 +370,25 @@ function fetchAgentGroups() {
 function directFetchGroups() {
   console.log('Attempting direct fetch for agent groups...');
   
-  if (!window.app || !window.app.apiUrl || !window.app.apiKey) {
-    console.error('API configuration not available');
+  if (!window.app || !window.app.fetchGroups) {
+    console.error('App fetch utility not available');
     return renderSampleGroups();
   }
   
-  const apiUrl = window.app.apiUrl;
-  const apiKey = window.app.apiKey;
-  
-  // Create authentication token
-  const authToken = btoa(apiKey + ':X');
-  
-  // Make direct fetch call
-  fetch(`${apiUrl}/api/v2/groups`, {
-    method: 'GET',
-    headers: {
-      'Authorization': 'Basic ' + authToken,
-      'Content-Type': 'application/json'
-    }
-  })
-  .then(response => {
-    if (!response.ok) {
-      throw new Error(`HTTP error ${response.status}`);
-    }
-    return response.json();
-  })
-  .then(data => {
-    if (data && data.groups) {
-      renderGroups(data.groups);
-    } else {
-      console.error('Invalid response format', data);
+  // Use the app's utility function to make the API call
+  window.app.fetchGroups()
+    .then(groups => {
+      if (groups && Array.isArray(groups)) {
+        renderGroups(groups);
+      } else {
+        console.error('Invalid groups data format');
+        renderSampleGroups();
+      }
+    })
+    .catch(error => {
+      console.error('App fetch groups failed:', error);
       renderSampleGroups();
-    }
-  })
-  .catch(error => {
-    console.error('Direct fetch failed:', error);
-    renderSampleGroups();
-  });
+    });
 }
 
 // Add implementation group field to the form
@@ -457,36 +444,6 @@ function addImplementationGroupField() {
       filterGroups(this.value);
     });
   }
-}
-
-// Add Change Subject field
-function addChangeSubjectField() {
-  // Check if we already added the field
-  if (document.getElementById('changeSubject')) {
-    return;
-  }
-  
-  // Find where to insert the field (before requester section)
-  const requesterSection = document.querySelector('label[for="requesterSearch"]').parentNode;
-  if (!requesterSection) {
-    console.error('Cannot find requester section to add change subject field');
-    return;
-  }
-  
-  // Create subject field HTML
-  const subjectFieldHtml = `
-    <div class="form-group">
-      <label for="changeSubject">Change Subject</label>
-      <input type="text" id="changeSubject" class="form-control" placeholder="Enter a subject for this change">
-    </div>
-  `;
-  
-  // Create an element to hold the HTML
-  const subjectField = document.createElement('div');
-  subjectField.innerHTML = subjectFieldHtml;
-  
-  // Insert before requester section
-  requesterSection.parentNode.insertBefore(subjectField, requesterSection);
 }
 
 // Render groups in the dropdown
@@ -738,14 +695,14 @@ window.clearSelectedItem = function(type) {
 // Submit change request
 function submitChangeRequest() {
   // Collect form data
-  const changeSubject = document.getElementById('changeSubject')?.value || '';
+  const changeTitle = document.getElementById('changeTitle')?.value || '';
   const changeType = document.getElementById('changeType')?.value || '';
   
   // Validate form
   const errors = [];
   
-  if (!changeSubject.trim()) {
-    errors.push('Change Subject is required');
+  if (!changeTitle.trim()) {
+    errors.push('Change Title is required');
   }
   
   if (!changeType) {
@@ -777,7 +734,7 @@ function submitChangeRequest() {
   
   // Prepare data for submission
   const changeData = {
-    subject: changeSubject,
+    subject: changeTitle,
     type: changeType,
     requester_id: selectedItems.requester.id,
     agent_id: selectedItems.agent.id,
@@ -793,8 +750,4 @@ function submitChangeRequest() {
   showNotification('Change request submitted successfully!', 'success');
 }
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-  // Add Change Subject field
-  addChangeSubjectField();
-}); 
+ 
