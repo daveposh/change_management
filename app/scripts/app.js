@@ -2772,7 +2772,7 @@ function runDiagnostics() {
         return;
       }
       
-      let content = '<div class="list-group">';
+      let content = '<div class="list-group search-results-list">';
       
       results.forEach(user => {
         const displayName = user.first_name && user.last_name 
@@ -2785,10 +2785,14 @@ function runDiagnostics() {
         const departmentName = user.department_names && user.department_names.length ? 
                               user.department_names.join(', ') : 
                               (user.department || '');
+        // Get job title if available
+        const jobTitle = user.job_title || '';
+        
         // Ensure we have safe values for data attributes
         const safeEmail = (user.email || '').replace(/"/g, '&quot;');
         const safeDept = departmentName.replace(/"/g, '&quot;');
         const safeLocation = locationName.replace(/"/g, '&quot;');
+        const safeJobTitle = jobTitle.replace(/"/g, '&quot;');
           
         content += `
           <a href="#" class="list-group-item list-group-item-action" 
@@ -2797,24 +2801,55 @@ function runDiagnostics() {
              data-email="${safeEmail}" 
              data-department="${safeDept}"
              data-location="${safeLocation}"
+             data-job-title="${safeJobTitle}"
              onclick="selectUser('${type}', this.dataset)">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <h5 class="mb-1">${displayName}</h5>
-                <p class="mb-1 text-primary">${safeEmail}</p>
-                <div class="small text-muted">
-                  ${departmentName ? `<span class="mr-2">Department: ${departmentName}</span>` : ''}
-                  ${locationName ? `<span>Location: ${locationName}</span>` : ''}
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="user-info">
+                <h5 class="mb-1 user-name">${displayName}</h5>
+                <div class="text-primary user-email">${safeEmail}</div>
+                <div class="user-details small">
+                  ${departmentName ? `<span class="badge badge-light mr-2">Dept: ${departmentName}</span>` : ''}
+                  ${locationName ? `<span class="badge badge-light mr-2">Location: ${locationName}</span>` : ''}
+                  ${jobTitle ? `<span class="badge badge-light mr-2">Title: ${jobTitle}</span>` : ''}
                 </div>
               </div>
-              <span class="badge badge-primary badge-pill">Select</span>
+              <span class="badge badge-primary badge-select">Select</span>
             </div>
           </a>
         `;
       });
       
       content += '</div>';
+      
+      // Add custom CSS for the search results
+      if (!document.getElementById('search-results-styles')) {
+        const style = document.createElement('style');
+        style.id = 'search-results-styles';
+        style.textContent = `
+          .search-results-list {
+            max-height: 300px;
+            overflow-y: auto;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+          }
+          .badge-select {
+            padding: 5px 8px;
+            margin-top: 5px;
+          }
+          .user-details {
+            margin-top: 5px;
+            line-height: 1.8;
+          }
+          .user-email {
+            font-weight: 500;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      
       container.innerHTML = content;
+      
+      // Make the container visible
+      container.style.display = 'block';
       
       // Also add code to replace the selectUser function if needed
       if (!window.selectUser) {
@@ -2841,20 +2876,44 @@ function runDiagnostics() {
           
           // Update department and add location if available
           if (deptElement) {
-            let deptText = userData.department || '';
+            let details = [];
             
-            // Add location if available
-            if (userData.location) {
-              deptText += userData.location ? ` | Location: ${userData.location}` : '';
+            if (userData.department) {
+              details.push(`Department: ${userData.department}`);
             }
             
-            deptElement.textContent = deptText;
+            if (userData.location) {
+              details.push(`Location: ${userData.location}`);
+            }
+            
+            if (userData.jobTitle) {
+              details.push(`Title: ${userData.jobTitle}`);
+            }
+            
+            deptElement.innerHTML = details.join(' | ');
+          }
+          
+          // Make the selected user card more prominent
+          const selectedCard = selectedContainer.querySelector('.card');
+          if (selectedCard) {
+            selectedCard.style.transition = 'all 0.2s ease';
+            selectedCard.style.boxShadow = '0 0 8px rgba(0, 123, 255, 0.5)';
+            setTimeout(() => {
+              selectedCard.style.boxShadow = '';
+            }, 2000);
           }
           
           // Clear search results
           const resultsContainer = document.getElementById(`${type}Results`);
           if (resultsContainer) {
             resultsContainer.innerHTML = '';
+            resultsContainer.style.display = 'none';
+          }
+          
+          // Also clear the search input
+          const searchInput = document.getElementById(`${type}Search`);
+          if (searchInput) {
+            searchInput.value = userData.name;
           }
         };
       }
@@ -2866,4 +2925,95 @@ function runDiagnostics() {
   
   // Initialize the integration
   integrateWithChangeForm();
+  
+  // Add real-time search functionality
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log('Adding real-time search functionality');
+    
+    // Setup keyup search for agent input
+    const agentSearch = document.getElementById('agentSearch');
+    if (agentSearch) {
+      let agentSearchTimeout = null;
+      
+      agentSearch.addEventListener('keyup', function(e) {
+        // Skip if Enter key was pressed (already handled in HTML)
+        if (e.key === 'Enter') return;
+        
+        // Clear previous timeout
+        if (agentSearchTimeout) {
+          clearTimeout(agentSearchTimeout);
+        }
+        
+        // Set a new timeout for search after typing stops
+        const searchTerm = this.value.trim();
+        if (searchTerm && searchTerm.length >= 2) {
+          agentSearchTimeout = setTimeout(() => {
+            console.log('Triggering search for agent:', searchTerm);
+            if (window.searchUsers) {
+              window.searchUsers('agent');
+            } else if (window.app && window.app.searchUsers) {
+              const agentResults = document.getElementById('agentResults');
+              
+              // Show loading spinner in results container
+              if (agentResults) {
+                agentResults.innerHTML = '<div class="text-center p-2"><div class="spinner-border spinner-border-sm text-primary" role="status"><span class="sr-only">Loading...</span></div></div>';
+                agentResults.style.display = 'block';
+              }
+              
+              window.app.searchUsers(searchTerm)
+                .then(results => {
+                  console.log(`Found ${results.length} agent results for real-time search`);
+                })
+                .catch(error => {
+                  console.error('Error in real-time agent search:', error);
+                });
+            }
+          }, 300); // 300ms delay
+        }
+      });
+    }
+    
+    // Setup keyup search for requester input
+    const requesterSearch = document.getElementById('requesterSearch');
+    if (requesterSearch) {
+      let requesterSearchTimeout = null;
+      
+      requesterSearch.addEventListener('keyup', function(e) {
+        // Skip if Enter key was pressed (already handled in HTML)
+        if (e.key === 'Enter') return;
+        
+        // Clear previous timeout
+        if (requesterSearchTimeout) {
+          clearTimeout(requesterSearchTimeout);
+        }
+        
+        // Set a new timeout for search after typing stops
+        const searchTerm = this.value.trim();
+        if (searchTerm && searchTerm.length >= 2) {
+          requesterSearchTimeout = setTimeout(() => {
+            console.log('Triggering search for requester:', searchTerm);
+            if (window.searchRequesters) {
+              window.searchRequesters('requester');
+            } else if (window.app && window.app.searchRequesters) {
+              const requesterResults = document.getElementById('requesterResults');
+              
+              // Show loading spinner in results container
+              if (requesterResults) {
+                requesterResults.innerHTML = '<div class="text-center p-2"><div class="spinner-border spinner-border-sm text-primary" role="status"><span class="sr-only">Loading...</span></div></div>';
+                requesterResults.style.display = 'block';
+              }
+              
+              window.app.searchRequesters(searchTerm)
+                .then(results => {
+                  console.log(`Found ${results.length} requester results for real-time search`);
+                })
+                .catch(error => {
+                  console.error('Error in real-time requester search:', error);
+                });
+            }
+          }, 300); // 300ms delay
+        }
+      });
+    }
+  });
 })();

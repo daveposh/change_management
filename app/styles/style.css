@@ -227,45 +227,60 @@ body {
 .search-results {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #e9ecef;
   border-radius: 4px;
-  padding: 5px;
-  position: absolute;
-  background-color: white;
-  z-index: 1000;
-  width: 100%;
-  display: none;
+  transition: all 0.3s ease;
+  display: none; /* Hidden by default, shown when results are available */
 }
 
-.search-results:not(:empty) {
-  display: block;
+.search-results-list {
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
 }
 
 .search-results .list-group-item {
-  padding: 8px 12px;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s ease;
+  border-left: 3px solid transparent;
 }
 
 .search-results .list-group-item:hover {
   background-color: #f8f9fa;
+  border-left: 3px solid #007bff;
 }
 
-.search-results .list-group-item-action:active {
-  background-color: #e9ecef;
+.badge-select {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  margin-top: 5px;
+}
+
+.user-details {
+  margin-top: 5px;
+  line-height: 1.8;
+}
+
+.user-email {
+  font-weight: 500;
+  color: #0056b3;
 }
 
 /* Selected items */
 .selected-item .card {
-  background-color: #f8f9fa;
   transition: all 0.3s ease;
-}
-
-.selected-item .card-body {
-  padding: 0.75rem;
+  overflow: hidden;
 }
 
 .selected-item .card:hover {
-  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 8px rgba(0, 123, 255, 0.5);
+}
+
+.selected-item .card-title {
+  font-weight: 600;
+}
+
+.selected-item .card-subtitle {
+  color: #0056b3;
+  font-weight: 500;
 }
 
 /* Implementation group dropdown */
@@ -281,5 +296,14 @@ body {
   
   .user-meta {
     flex-direction: column;
+  }
+  
+  .search-results {
+    max-height: 200px;
+  }
+  
+  .user-details .badge {
+    display: inline-block;
+    margin-bottom: 3px;
   }
 }
