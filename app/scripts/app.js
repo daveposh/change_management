@@ -1935,9 +1935,102 @@ function runDiagnostics() {
     });
   }
   
-    // Intentionally empty for readability
-  
-
+  // Search for requesters via Freshservice API
+  function searchRequesters(query) {
+    return new Promise((resolve) => {
+      // Check if API URL and key are available
+      if (!app.apiUrl || !app.apiKey) {
+        showError('API configuration is missing. Please check app installation parameters.');
+        toggleSpinner(false);
+        resolve([]);
+        return;
+      }
+      
+      console.log('Searching requesters with query:', query);
+      console.log('Using API URL:', app.apiUrl);
+      
+      // Validate API URL
+      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
+        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
+        toggleSpinner(false);
+        resolve([]);
+        return;
+      }
+      
+      try {
+        // Create Basic Auth token
+        const authToken = btoa(app.apiKey + ':X');
+        console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
+        
+        // Build the query - exactly matching the documented format
+        // For requesters whose first name or last name starts with 'query'
+        const queryString = `~[first_name|last_name]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
+        console.log('Request URL:', apiUrl);
+        
+        // Make the API call
+        fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Basic ' + authToken,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('API response:', data);
+          
+          if (data && data.requesters && Array.isArray(data.requesters)) {
+            console.log(`Found ${data.requesters.length} requesters matching the query`);
+            renderResults('requesters', data.requesters);
+            resolve(data.requesters);
+          } else {
+            console.warn('Response contained no requesters array:', data);
+            // Check if data is in a different format
+            if (data && Array.isArray(data)) {
+              console.log('Data appears to be an array directly, using as requesters');
+              renderResults('requesters', data);
+              resolve(data);
+            } else {
+              renderResults('requesters', []);
+              resolve([]);
+            }
+          }
+        })
+        .catch(function(error) {
+          console.error('API request failed:', error);
+          
+          let errorMessage = 'API request failed';
+          if (error.status) {
+            errorMessage += ` (Status: ${error.status})`;
+          }
+          if (error.message) {
+            errorMessage += `: ${error.message}`;
+          }
+          
+          showError(errorMessage);
+          renderResults('requesters', []);
+          resolve([]);
+        })
+        .finally(function() {
+          toggleSpinner(false);
+        });
+      } catch (error) {
+        console.error('Error in search:', error);
+        showError(`Error making API request: ${error.message}`);
+        renderResults('requesters', []);
+        resolve([]);
+        toggleSpinner(false);
+      }
+    });
+  }
   
   // Render search results
   function renderResults(type, results) {
@@ -1954,6 +2047,20 @@ function runDiagnostics() {
     if (statusMsg) {
       statusMsg.remove();
     }
+    
+    // Make sure results is an array
+    if (!Array.isArray(results)) {
+      console.error('Results is not an array:', results);
+      resultsContainer.innerHTML = `
+        <div class="alert alert-danger mt-3">
+          Error: Received invalid data format from API.
+        </div>
+      `;
+      return;
+    }
+    
+    // Clear previous results first
+    resultsContainer.innerHTML = '';
     
     if (results.length === 0) {
       resultsContainer.innerHTML = `
@@ -1989,11 +2096,18 @@ function runDiagnostics() {
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       
+      // Skip if result is null or undefined
+      if (!result) {
+        console.warn(`Skipping null/undefined result at index ${i}`);
+        continue;
+      }
+      
       // Handle potentially missing or null fields
       const firstName = result.first_name || '';
       const lastName = result.last_name || '';
       const email = result.email || 'No email provided';
       const initials = getInitials(firstName, lastName);
+      const active = typeof result.active === 'boolean' ? result.active : true;
       
       // Build additional attributes section
       let additionalAttributes = '';
@@ -2013,25 +2127,38 @@ function runDiagnostics() {
         additionalAttributes += addBadgeIfExists('Dept', result.department, 'badge-light');
       }
       
+      // Department names from array if available
+      if (result.department_names && Array.isArray(result.department_names) && result.department_names.length > 0) {
+        additionalAttributes += addBadgeIfExists('Departments', result.department_names.join(', '), 'badge-light');
+      }
+      
       // Add job title if available
       if (result.job_title) {
         additionalAttributes += addBadgeIfExists('Job', result.job_title, 'badge-light');
       }
       
-      // Add location if available
-      if (result.location_id) {
-        additionalAttributes += addBadgeIfExists('Location', result.location_id, 'badge-light');
+      // Add location if available - now handling both id and name
+      if (result.location_name) {
+        additionalAttributes += addBadgeIfExists('Location', result.location_name, 'badge-light');
+      } else if (result.location_id) {
+        additionalAttributes += addBadgeIfExists('Location ID', result.location_id, 'badge-light');
       }
       
-      // Add phone if available
+      // Add phone if available - check both work and mobile
       if (result.work_phone_number) {
         additionalAttributes += addBadgeIfExists('Phone', result.work_phone_number, 'badge-light');
+      } else if (result.mobile_phone_number) {
+        additionalAttributes += addBadgeIfExists('Mobile', result.mobile_phone_number, 'badge-light');
       }
       
       // Add role info if available
       if (result.roles && Array.isArray(result.roles) && result.roles.length > 0) {
-        const roleIds = result.roles.map(r => r.role_id).join(', ');
-        additionalAttributes += addBadgeIfExists('Roles', roleIds, 'badge-info');
+        try {
+          const roleNames = result.roles.map(r => r.name || r.role_id).join(', ');
+          additionalAttributes += addBadgeIfExists('Roles', roleNames, 'badge-info');
+        } catch (error) {
+          console.warn('Error processing roles:', error);
+        }
       }
       
       // Add group memberships if available
@@ -2050,9 +2177,13 @@ function runDiagnostics() {
       
       // Add created date if available
       if (result.created_at) {
-        const createdDate = new Date(result.created_at);
-        const formattedDate = createdDate.toLocaleDateString();
-        additionalAttributes += addBadgeIfExists('Created', formattedDate, 'badge-light');
+        try {
+          const createdDate = new Date(result.created_at);
+          const formattedDate = createdDate.toLocaleDateString();
+          additionalAttributes += addBadgeIfExists('Created', formattedDate, 'badge-light');
+        } catch (error) {
+          console.warn('Error formatting date:', error);
+        }
       }
       
       // Add custom fields if available
@@ -2068,6 +2199,7 @@ function runDiagnostics() {
       const copyText = `Name: ${firstName} ${lastName}
 Email: ${email}
 Type: ${type === 'users' ? 'Agent' : 'Requester'}
+${result.department_names ? 'Departments: ' + result.department_names.join(', ') : ''}
 ${result.department ? 'Department: ' + result.department : ''}
 ${result.job_title ? 'Job Title: ' + result.job_title : ''}
 ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
@@ -2088,8 +2220,8 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
                           onclick="copyToClipboard('${copyText.replace(/'/g, "\\'")}')">
                     Copy Info
                   </button>
-                  <span class="badge badge-${result.active ? 'success' : 'secondary'} ml-2">
-                    ${result.active ? 'Active' : 'Inactive'}
+                  <span class="badge badge-${active ? 'success' : 'secondary'} ml-2">
+                    ${active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
               </div>
@@ -2455,6 +2587,46 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
 
   // Make function available globally
   window.exportToCsv = exportToCsv;
+
+  // Copy user info to clipboard
+  function copyToClipboard(text) {
+    // Create a temporary textarea element to hold the text
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'absolute';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    
+    // Select and copy the text
+    textarea.select();
+    document.execCommand('copy');
+    
+    // Remove the temporary element
+    document.body.removeChild(textarea);
+    
+    // Show feedback that text was copied
+    const notification = document.createElement('div');
+    notification.style.position = 'fixed';
+    notification.style.bottom = '20px';
+    notification.style.right = '20px';
+    notification.style.backgroundColor = '#28a745';
+    notification.style.color = 'white';
+    notification.style.padding = '10px 15px';
+    notification.style.borderRadius = '4px';
+    notification.style.zIndex = '9999';
+    notification.textContent = 'Info copied to clipboard!';
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove notification after 2 seconds
+    setTimeout(() => {
+      document.body.removeChild(notification);
+    }, 2000);
+  }
+  
+  // Make copy function available globally
+  window.copyToClipboard = copyToClipboard;
 
   // Render sample users data for testing
   function renderSampleUsers(query) {
