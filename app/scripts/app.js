@@ -1783,10 +1783,10 @@ function runDiagnostics() {
       console.log('Using advanced query:', searchTerm);
       queryString = searchTerm;
     } else {
-      // Build a simple query for first_name, last_name, or email
-      // Per Freshservice docs, the query format should be "\"name:\'John\'\"" (with escaped quotes)
-      console.log('Using simple query with OR conditions');
-      queryString = `"first_name:'${searchTerm}'" OR "last_name:'${searchTerm}'" OR "email:'${searchTerm}'"`;
+      // For simple text search, Freshservice API needs the name format
+      // For simple queries, we should just pass the search term without special formatting
+      console.log('Using simple name search');
+      queryString = searchTerm;
     }
     
     // Perform search based on active tab with the query
@@ -1876,9 +1876,9 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      // According to Freshservice API docs, query should be without quotes in the URL parameter
+      // Try using name parameter for simple text search instead of query
       const encodedQuery = encodeURIComponent(query);
-      const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
+      const apiUrl = `${app.apiUrl}/api/v2/agents?name=${encodedQuery}`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2046,6 +2046,19 @@ function runDiagnostics() {
         .catch(function(error) {
           console.error('API request failed:', error);
           
+          // Add more detailed debugging - log the complete error object
+          console.log('Complete error object:', JSON.stringify(error));
+          
+          // If we have headers or response text, log those too
+          if (error.headers) {
+            console.log('Error response headers:', error.headers);
+          }
+          
+          // Try to access response text if available
+          if (error.responseText) {
+            console.log('Error response text:', error.responseText);
+          }
+          
           let errorMessage = 'API request failed';
           if (error.status) {
             errorMessage += ` (Status: ${error.status})`;
@@ -2095,9 +2108,9 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query (use the raw query parameter without quotes)
+        // Build the query using name parameter for simple text search
         const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
+        const apiUrl = `${app.apiUrl}/api/v2/agents?name=${encodedQuery}`;
         console.log('Direct fetch URL:', apiUrl);
         
                   // Try to use rate-limited client.request if available
@@ -2308,9 +2321,10 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      // According to Freshservice API docs, query should be without quotes in the URL parameter
+      // Try a different approach - use name parameter for simple searches instead of query
       const encodedQuery = encodeURIComponent(query);
-      const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
+      // Use the name parameter which works better for text search
+      const apiUrl = `${app.apiUrl}/api/v2/requesters?name=${encodedQuery}`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2478,6 +2492,19 @@ function runDiagnostics() {
         .catch(function(error) {
           console.error('API request failed:', error);
           
+          // Add more detailed debugging - log the complete error object
+          console.log('Complete error object:', JSON.stringify(error));
+          
+          // If we have headers or response text, log those too
+          if (error.headers) {
+            console.log('Error response headers:', error.headers);
+          }
+          
+          // Try to access response text if available
+          if (error.responseText) {
+            console.log('Error response text:', error.responseText);
+          }
+          
           let errorMessage = 'API request failed';
           if (error.status) {
             errorMessage += ` (Status: ${error.status})`;
@@ -2527,9 +2554,9 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query (use the raw query parameter without quotes)
+        // Build the query using the name parameter which works better for text search
         const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
+        const apiUrl = `${app.apiUrl}/api/v2/requesters?name=${encodedQuery}`;
         console.log('Direct fetch URL:', apiUrl);
         
         // Try to use rate-limited client.request if available
@@ -2704,6 +2731,12 @@ function runDiagnostics() {
   // Render search results
   function renderResults(type, results) {
     const resultsContainer = document.getElementById(`${type}Results`);
+    
+    // Check if results container exists
+    if (!resultsContainer) {
+      console.error(`Results container '${type}Results' not found`);
+      return;
+    }
     
     // Remove search status message if it exists
     const statusMsg = document.getElementById('searchStatus');
@@ -3023,16 +3056,50 @@ ${result.work_phone_number ? 'Phone: ' + result.work_phone_number : ''}`;
       displayMessage += `<br><br>API URL: ${app.apiUrl || 'Not configured'}`;
     }
     
-    // Show error message in active tab
+    // Show error message in active tab OR in any available results container
     const activeTab = document.querySelector('.tab-pane.active');
     if (!activeTab) {
       console.error('No active tab found to display error');
+      
+      // Try to find any results container as fallback
+      const usersResults = document.getElementById('usersResults');
+      const requestersResults = document.getElementById('requestersResults');
+      
+      const fallbackContainer = usersResults || requestersResults;
+      if (fallbackContainer) {
+        fallbackContainer.innerHTML = `
+          <div class="alert alert-danger mt-3">
+            ${displayMessage}
+          </div>
+        `;
+        return;
+      }
+      
+      console.error('No container found to display error');
       return;
     }
     
-    const resultsContainer = activeTab.querySelector('.results-container');
+    // First try the specific results-container
+    let resultsContainer = activeTab.querySelector('.results-container');
+    
+    // If not found, try to get the tab-specific results container
     if (!resultsContainer) {
-      console.error('No results container found in active tab');
+      const activeTabId = activeTab.id;
+      if (activeTabId === 'users-tab-pane') {
+        resultsContainer = document.getElementById('usersResults');
+      } else if (activeTabId === 'requesters-tab-pane') {
+        resultsContainer = document.getElementById('requestersResults');
+      }
+    }
+    
+    // If we still don't have a container, try one last approach
+    if (!resultsContainer) {
+      resultsContainer = document.getElementById('usersResults') || 
+                         document.getElementById('requestersResults');
+    }
+    
+    if (!resultsContainer) {
+      console.error('No results container found to display error');
       return;
     }
     
