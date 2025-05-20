@@ -89,7 +89,7 @@ window.addEventListener('securitypolicyviolation', function(e) {
   }
 })();
 
-// Add a diagnostic function to run after a short delay
+  // Add a diagnostic function to run after a short delay
 function runDiagnostics() {
   console.log("Running diagnostics...");
   
@@ -130,18 +130,74 @@ function runDiagnostics() {
   // Check for app state
   if (typeof app !== 'undefined') {
     console.log('App object:', app);
-    console.log('API URL configured:', app.apiUrl);
-    console.log('API Key configured:', !!app.apiKey);
+    
+    // Display API configuration status
+    const apiStatus = {
+      apiUrl: app.apiUrl || 'Not configured',
+      hasApiKey: !!app.apiKey,
+      isUsingExampleDomain: (app.apiUrl || '').includes('example.freshservice.com'),
+      appTitle: app.appTitle || 'Default title',
+      configuredEndpoints: app.endpoints || 'No endpoints configured'
+    };
+    
+    console.log('API CONFIGURATION STATUS:', apiStatus);
+    
+    if (apiStatus.isUsingExampleDomain) {
+      console.error('⚠️ CONFIGURATION ISSUE DETECTED: Using example domain');
+      console.error('To fix this issue, add the following to your URL:');
+      console.error('?api_url=yourdomain.freshservice.com&api_key=your-api-key');
+      
+      // Show a visual warning in the UI
+      const container = document.querySelector('.container');
+      if (container) {
+        const warning = document.createElement('div');
+        warning.className = 'alert alert-danger mt-2 mb-2';
+        warning.innerHTML = `
+          <strong>Configuration Issue Detected:</strong> Using example domain.<br>
+          <p>To fix this issue, add the following to your URL:</p>
+          <code>?api_url=yourdomain.freshservice.com&api_key=your-api-key</code>
+        `;
+        container.insertBefore(warning, container.firstChild);
+      }
+    }
     
     // Add more debug info
     console.log('Window location:', window.location.href);
     console.log('URL has dev=true:', window.location.href.includes('dev=true'));
+    
+    // Check configuration storage
+    if (window.client && window.client.db) {
+      console.log('Client DB is available, checking stored configuration...');
+      window.client.db.get('app_config')
+        .then(config => {
+          console.log('Stored configuration in client.db:', config);
+          if (config && config.apiUrl && config.apiUrl.includes('example.freshservice.com')) {
+            console.error('⚠️ STORAGE ISSUE: example domain found in client.db storage');
+          }
+        })
+        .catch(err => console.error('Error checking client.db:', err));
+    }
+    
+    // Check localStorage backup
+    try {
+      const localStorageData = localStorage.getItem('freshservice_change_management_iparams');
+      if (localStorageData) {
+        const localConfig = JSON.parse(localStorageData);
+        console.log('Backup configuration in localStorage:', localConfig);
+        if (localConfig.api_url && localConfig.api_url.includes('example.freshservice.com')) {
+          console.error('⚠️ STORAGE ISSUE: example domain found in localStorage');
+        }
+      }
+    } catch (e) {
+      console.error('Error checking localStorage:', e);
+    }
     
     // Check if the client has iparams method
     if (window.client) {
       console.log('Client object available');
       console.log('Client has iparams:', !!window.client.iparams);
       console.log('Client has context:', !!window.client.context);
+      console.log('Client has db:', !!window.client.db);
       
       // Try to get client details
       const clientInfo = {
@@ -396,20 +452,42 @@ function createFakeClient() {
         get: function(url) {
           console.log('Dev client: Making real API call to:', url);
           
+          // Check if URL is using example.freshservice.com
+          if (url.includes('example.freshservice.com')) {
+            const warningMsg = 'API call using example.freshservice.com detected. This will not work with real data.';
+            console.error(warningMsg);
+            console.error('Please configure your actual Freshservice URL in the app settings.');
+            console.error('Add ?api_url=yourdomain.freshservice.com&api_key=your_api_key to your URL to fix this issue.');
+            
+            // Display a more helpful error in the UI
+            showError(`${warningMsg} Add ?api_url=yourdomain.freshservice.com&api_key=your_api_key to your URL.`);
+            
+            return Promise.reject({
+              status: 400,
+              statusText: 'Invalid API URL: Using example.freshservice.com placeholder. Please configure your actual Freshservice domain.'
+            });
+          }
+          
           // Get API key from iparams in localStorage or dev params
           let apiKey = window.__DEV_PARAMS__?.api_key;
           
           // If not in URL params, try localStorage
           if (!apiKey) {
             try {
-              const savedData = localStorage.getItem('freshservice_change_management_iparams');
-              if (savedData) {
-                const savedIparams = JSON.parse(savedData);
-                apiKey = savedIparams.api_key;
-                console.log('Using API key from saved settings');
+              // Try client.db first through our app object
+              if (app && app.apiKey) {
+                apiKey = app.apiKey;
+                console.log('Using API key from app configuration');
+              } else {
+                const savedData = localStorage.getItem('freshservice_change_management_iparams');
+                if (savedData) {
+                  const savedIparams = JSON.parse(savedData);
+                  apiKey = savedIparams.api_key;
+                  console.log('Using API key from saved settings');
+                }
               }
             } catch (e) {
-              console.error('Error reading API key from localStorage:', e);
+              console.error('Error reading API key from storage:', e);
             }
           }
           
@@ -417,16 +495,6 @@ function createFakeClient() {
           if (!apiKey) {
             console.warn('No API key found, using placeholder. API calls will likely fail.');
             apiKey = 'dev-placeholder-key';
-          }
-          
-          // Check if URL is using example.freshservice.com
-          if (url.includes('example.freshservice.com')) {
-            console.error('API call using example.freshservice.com detected. This will not work with real data.');
-            console.error('Please configure your actual Freshservice URL in the app settings.');
-            return Promise.reject({
-              status: 400,
-              statusText: 'Invalid API URL: Using example.freshservice.com placeholder. Please configure your actual Freshservice domain.'
-            });
           }
           
           const authToken = btoa(apiKey + ':X');
@@ -672,6 +740,50 @@ function createFakeClient() {
     // Create global app object if it doesn't exist
     window.app = window.app || {};
     
+    // First check for URL parameters that override everything
+    const urlParams = new URLSearchParams(window.location.search);
+    const apiUrlParam = urlParams.get('api_url');
+    const apiKeyParam = urlParams.get('api_key');
+    
+    if (apiUrlParam && apiKeyParam) {
+      console.log('Using configuration from URL parameters');
+      
+      // Process API URL to ensure it has proper format
+      let apiUrl = apiUrlParam;
+      if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+        apiUrl = 'https://' + apiUrl;
+      }
+      
+      app.apiUrl = apiUrl;
+      app.apiKey = apiKeyParam;
+      app.appTitle = urlParams.get('app_title') || 'Change Management';
+      app.changeTypes = [
+        "Standard Change", 
+        "Emergency Change", 
+        "Non-Standard Change"
+      ];
+      
+      // Set up API endpoints
+      app.endpoints = {
+        users: `${app.apiUrl}/api/v2/agents`,
+        requesters: `${app.apiUrl}/api/v2/requesters`,
+        groups: `${app.apiUrl}/api/v2/groups`
+      };
+      
+      console.log('API endpoints configured from URL parameters:', app.endpoints);
+      
+      // Save working config to storage for persistence
+      saveConfigToStorage(client, {
+        apiUrl: app.apiUrl,
+        apiKey: app.apiKey,
+        appTitle: app.appTitle,
+        changeTypes: app.changeTypes
+      });
+      
+      updateAppTitle(app.appTitle);
+      return;
+    }
+    
     function loadFromIparams() {
       console.log('Loading from client.iparams.get()');
       return client.iparams.get().then(params => {
@@ -682,6 +794,12 @@ function createFakeClient() {
           let apiUrl = params.api_url;
           if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
             apiUrl = 'https://' + apiUrl;
+          }
+          
+          // Verify it's not using the example domain
+          if (apiUrl.includes('example.freshservice.com')) {
+            console.warn('Found example domain in iparams, will check storage instead');
+            return false;
           }
           
           app.apiUrl = apiUrl;
@@ -700,9 +818,9 @@ function createFakeClient() {
             groups: `${app.apiUrl}/api/v2/groups`
           };
           
-                      console.log('API endpoints configured from iparams:', app.endpoints);
+          console.log('API endpoints configured from iparams:', app.endpoints);
             
-            // Save working config to storage for persistence
+          // Save working config to storage for persistence
           saveConfigToStorage(client, {
             apiUrl: app.apiUrl,
             apiKey: app.apiKey,
@@ -724,13 +842,19 @@ function createFakeClient() {
       console.log('Loading from client.db storage');
       return client.db.get('app_config')
         .then(config => {
-          if (config) {
+          if (config && config.apiUrl) {
             console.log('Using configuration from data storage');
             
             // Process API URL to ensure it has proper format
             let apiUrl = config.apiUrl;
             if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
               apiUrl = 'https://' + apiUrl;
+            }
+            
+            // Verify it's not using the example domain
+            if (apiUrl.includes('example.freshservice.com')) {
+              console.warn('Found example domain in storage, will use defaults');
+              return false;
             }
             
             app.apiUrl = apiUrl;
@@ -761,6 +885,59 @@ function createFakeClient() {
         });
     }
     
+    // Try to load from localStorage as a fallback for migration
+    function loadFromLocalStorage() {
+      console.log('Trying to load from localStorage as last resort');
+      try {
+        const savedData = localStorage.getItem('freshservice_change_management_iparams');
+        if (savedData) {
+          const config = JSON.parse(savedData);
+          
+          if (config && config.api_url && !config.api_url.includes('example.freshservice.com')) {
+            console.log('Using configuration from localStorage');
+            
+            // Process API URL to ensure it has proper format
+            let apiUrl = config.api_url;
+            if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+              apiUrl = 'https://' + apiUrl;
+            }
+            
+            app.apiUrl = apiUrl;
+            app.apiKey = config.api_key;
+            app.appTitle = config.app_title || 'Change Management';
+            app.changeTypes = config.change_types || [
+              "Standard Change", 
+              "Emergency Change", 
+              "Non-Standard Change"
+            ];
+            
+            // Set up API endpoints
+            app.endpoints = {
+              users: `${app.apiUrl}/api/v2/agents`,
+              requesters: `${app.apiUrl}/api/v2/requesters`,
+              groups: `${app.apiUrl}/api/v2/groups`
+            };
+            
+            console.log('API endpoints configured from localStorage:', app.endpoints);
+            
+            // Migrate to client.db
+            saveConfigToStorage(client, {
+              apiUrl: app.apiUrl,
+              apiKey: app.apiKey,
+              appTitle: app.appTitle,
+              changeTypes: app.changeTypes
+            });
+            
+            updateAppTitle(app.appTitle);
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error('Error reading from localStorage:', e);
+      }
+      return false;
+    }
+    
     // First try to load from iparams (app settings)
     loadFromIparams()
       .then(found => {
@@ -772,8 +949,15 @@ function createFakeClient() {
       })
       .then(found => {
         if (!found) {
+          // Try localStorage as last resort
+          return loadFromLocalStorage();
+        }
+        return found;
+      })
+      .then(found => {
+        if (!found) {
           // Use defaults if nothing worked
-          console.warn('No configuration found, using defaults');
+          console.warn('No valid configuration found, using defaults');
           app.apiUrl = 'https://example.freshservice.com';
           app.apiKey = '';
           app.appTitle = 'Change Management';
@@ -783,7 +967,7 @@ function createFakeClient() {
             "Non-Standard Change"
           ];
           
-          showWarning('No configuration found. Please reinstall the app with proper settings or contact administrator.');
+          showWarning('No valid configuration found. Please reinstall the app with proper settings or add ?api_url=yourdomain.freshservice.com&api_key=your_api_key to the URL.');
           updateAppTitle(app.appTitle);
         }
       });
