@@ -1833,7 +1833,7 @@ function runDiagnostics() {
   
   // Search for users via Freshservice API
   function searchUsers(query) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       // Check if API URL and key are available
       if (!app.apiUrl || !app.apiKey) {
         showError('API configuration is missing. Please check app installation parameters.');
@@ -1934,143 +1934,9 @@ function runDiagnostics() {
     });
   }
   
-    // Fallback to use direct fetch instead of client
-  function directFetchUsers(query) {
-    return new Promise((resolve) => {
-      console.log('Using direct fetch for users search');
-      toggleSpinner(true);
-      
-      if (!app.apiUrl || !app.apiKey) {
-        console.log('API configuration missing, using sample data');
-        const sampleData = renderSampleUsers(query);
-        resolve(sampleData);
-        return;
-      }
-      
-      // Validate API URL
-      if (app.apiUrl === '' || !app.apiUrl.includes('.freshservice.com')) {
-        showError(`Invalid API URL: ${app.apiUrl || '(empty)'} - Must be a valid Freshservice domain`);
-        const sampleData = renderSampleUsers(query);
-        resolve(sampleData);
-        toggleSpinner(false);
-        return;
-      }
-      
-      try {
-        // Create auth token
-        const authToken = btoa(app.apiKey + ':X');
-        
-        // Build the query
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
-        const encodedQuery = encodeURIComponent(queryString);
-        const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
-        console.log('Direct fetch URL:', apiUrl);
-        
-        // Make the API call
-        fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': 'Basic ' + authToken,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-          }
-          return response.json();
-        })
-        .then(data => {
-          console.log('Direct fetch response:', data);
-          
-          if (data && data.agents && Array.isArray(data.agents)) {
-            console.log(`Found ${data.agents.length} agents matching the query`);
-            renderResults('users', data.agents);
-            resolve(data.agents);
-          } else {
-            console.warn('Response contained no agents array:', data);
-            // Check if data is in a different format
-            if (data && Array.isArray(data)) {
-              console.log('Data appears to be an array directly, using as requesters');
-              renderResults('requesters', data);
-              resolve(data);
-            } else {
-              renderResults('requesters', []);
-              resolve([]);
-            }
-          }
-        })
-        .catch(error => {
-          console.error('Direct fetch error:', error);
-          
-          // Show detailed error message
-          const errorMessage = 'API request failed';
-          if (error.message) {
-            errorMessage += `: ${error.message}`;
-          }
-          showError(errorMessage);
-          
-          console.log('Falling back to sample data');
-          const sampleData = renderSampleRequesters(query);
-          resolve(sampleData);
-        })
-        .finally(() => {
-          toggleSpinner(false);
-        });
-      } catch (error) {
-        console.error('Error in direct fetch:', error);
-        showError(`Error making API request: ${error.message}`);
-        const sampleData = renderSampleRequesters(query);
-        resolve(sampleData);
-        toggleSpinner(false);
-      }
-    });
-  }
+    // Intentionally empty for readability
   
-  // Render sample requesters data for testing
-  function renderSampleRequesters(query) {
-    console.log('Rendering sample requesters for: ' + query);
-    
-    // Generate fake requesters based on query
-    const sampleRequesters = [
-      {
-        first_name: 'Bob',
-        last_name: 'Johnson',
-        email: 'bob.johnson@example.com',
-        active: true,
-        department: 'Marketing'
-      },
-      {
-        first_name: 'Mary',
-        last_name: 'Williams',
-        email: 'mary.williams@example.com',
-        active: true,
-        department: 'Sales'
-      },
-      {
-        first_name: 'Alice',
-        last_name: 'Brown',
-        email: 'alice.brown@example.com',
-        active: true,
-        department: 'Operations'
-      }
-    ];
-    
-    // Check if query matches any sample requesters
-    const filteredRequesters = sampleRequesters.filter(requester => {
-      const fullName = (requester.first_name + ' ' + requester.last_name).toLowerCase();
-      const email = requester.email.toLowerCase();
-      const searchTerm = query.toLowerCase();
-      
-      return fullName.includes(searchTerm) || email.includes(searchTerm);
-    });
-    
-    renderResults('requesters', filteredRequesters);
-    toggleSpinner(false);
-    
-    return filteredRequesters;
-  }
+
   
   // Render search results
   function renderResults(type, results) {
