@@ -1,0 +1,54 @@
+{
+  "platform-version": "2.3",
+  "product": {
+    "freshservice": {
+      "location": {
+        "full_page_app": {
+          "url": "index.html",
+          "icon": "styles/images/icon.svg",
+          "label": "User Search"
+        }
+      }
+    }
+  },
+  "engines": {
+    "node": "18.19.1",
+    "fdk": "9.4.2"
+  },
+  "development": {
+    "pack": {
+      "skip_test_coverage": true
+    }
+  },
+  "csp": {
+    "frame-src": [
+      "self",
+      "https://*.freshservice.com",
+      "http://localhost:10001"
+    ],
+    "connect-src": [
+      "self",
+      "https://*.freshservice.com",
+      "http://localhost:10001"
+    ],
+    "img-src": [
+      "self",
+      "data:",
+      "https://*.freshservice.com",
+      "http://localhost:10001"
+    ],
+    "script-src": [
+      "self",
+      "https://code.jquery.com",
+      "https://cdn.jsdelivr.net",
+      "https://stackpath.bootstrapcdn.com",
+      "http://localhost:10001"
+    ],
+    "style-src": [
+      "self",
+      "unsafe-inline",
+      "https://stackpath.bootstrapcdn.com",
+      "http://localhost:10001"
+    ]
+  }
+}

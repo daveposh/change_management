@@ -1,0 +1,16 @@
+{
+  "api_url": {
+    "display_name": "Freshservice API URL",
+    "description": "Enter your Freshservice instance URL (e.g., https://yourcompany.freshservice.com) - the https:// prefix will be added automatically if omitted",
+    "type": "text",
+    "required": true,
+    "secure": false
+  },
+  "api_key": {
+    "display_name": "API Key",
+    "description": "Enter your Freshservice API key",
+    "type": "text",
+    "required": true,
+    "secure": true
+  }
+}

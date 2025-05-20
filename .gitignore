@@ -1,0 +1,7 @@
+.fdk/
+log/
+.report.json
+node_modules/
+fdk.log
+dist/
+

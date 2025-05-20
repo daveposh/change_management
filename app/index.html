@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script async src="{{{appclient}}}"></script>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
+    <link rel="stylesheet" type="text/css" href="styles/style.css">
+    <script>
+      // Fix for local development protocol mismatch
+      window.addEventListener('error', function(event) {
+        if (event.target.tagName === 'IMG' && event.target.src && event.target.src.includes('https://localhost')) {
+          console.log('Fixing HTTPS protocol issue for local development:', event.target.src);
+          event.target.src = event.target.src.replace('https://localhost', 'http://localhost');
+          event.preventDefault();
+        }
+      }, true);
+    </script>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="row mt-4">
+        <div class="col-12">
+          <h1>CXI Change Management</h1>
+          <p class="lead">Submit and manage change requests</p>
+        </div>
+      </div>
+
+      <div class="row mt-3">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <ul class="nav nav-tabs card-header-tabs" id="formTabs">
+                <li class="nav-item">
+                  <a class="nav-link active" id="change-details-tab" data-toggle="tab" href="#change-details" role="tab">Change Details</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" id="users-tab" data-toggle="tab" href="#users" role="tab">Users</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" id="requesters-tab" data-toggle="tab" href="#requesters" role="tab">Requesters</a>
+                </li>
+              </ul>
+            </div>
+            <div class="card-body">
+              <div class="tab-content" id="formTabContent">
+                <!-- Change Details Tab -->
+                <div class="tab-pane fade show active" id="change-details" role="tabpanel">
+                  <form id="changeForm">
+                    <!-- Requester Search Section -->
+                    <div class="form-group">
+                      <label for="requesterSearch">Requester</label>
+                      <div class="input-group">
+                        <input type="text" id="requesterSearch" class="form-control" placeholder="Search for requester...">
+                        <div class="input-group-append">
+                          <button class="btn btn-outline-secondary" type="button" id="requesterSearchBtn" onclick="searchRequesters('requester')">Search</button>
+                        </div>
+                      </div>
+                      <div id="requesterResults" class="search-results mt-2"></div>
+                      <div id="selectedRequester" class="selected-item mt-2 d-none">
+                        <div class="card">
+                          <div class="card-body">
+                            <h5 class="card-title" id="requesterName"></h5>
+                            <h6 class="card-subtitle mb-2 text-muted" id="requesterEmail"></h6>
+                            <p class="card-text" id="requesterDept"></p>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSelectedItem('requester')">Clear</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Agent Search Section -->
+                    <div class="form-group">
+                      <label for="agentSearch">Agent</label>
+                      <div class="input-group">
+                        <input type="text" id="agentSearch" class="form-control" placeholder="Search for agent...">
+                        <div class="input-group-append">
+                          <button class="btn btn-outline-secondary" type="button" id="agentSearchBtn" onclick="searchUsers('agent')">Search</button>
+                        </div>
+                      </div>
+                      <div id="agentResults" class="search-results mt-2"></div>
+                      <div id="selectedAgent" class="selected-item mt-2 d-none">
+                        <div class="card">
+                          <div class="card-body">
+                            <h5 class="card-title" id="agentName"></h5>
+                            <h6 class="card-subtitle mb-2 text-muted" id="agentEmail"></h6>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSelectedItem('agent')">Clear</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Change Type Dropdown -->
+                    <div class="form-group">
+                      <label for="changeType">Change Type</label>
+                      <select class="form-control" id="changeType">
+                        <option value="">Select a change type...</option>
+                        <option value="standard">Standard Change</option>
+                        <option value="non-production">Non-Production Change</option>
+                        <option value="emergency">Emergency Change</option>
+                        <option value="non-standard">Non-Standard Change</option>
+                      </select>
+                      <div class="mt-2" id="changeTypeDescription"></div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="form-group mt-4">
+                      <button type="submit" class="btn btn-primary">Submit Change Request</button>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Users Tab (original tab from user search) -->
+                <div class="tab-pane fade" id="users" role="tabpanel">
+                  <div class="input-group mb-3">
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search users by name or email...">
+                    <div class="input-group-append">
+                      <button class="btn btn-primary" id="searchButton" type="button" onclick="if(typeof window.app !== 'undefined' && window.app.performSearch) { window.app.performSearch(); } else { console.error('App not properly initialized'); }">Search</button>
+                    </div>
+                  </div>
+                  <div id="usersResults" class="results-container">
+                    <div class="text-center initial-message">
+                      <p>Enter a search term to find users</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Requesters Tab (original tab from user search) -->
+                <div class="tab-pane fade" id="requesters" role="tabpanel">
+                  <div class="input-group mb-3">
+                    <input type="text" id="requestersSearchInput" class="form-control" placeholder="Search requesters by name or email...">
+                    <div class="input-group-append">
+                      <button class="btn btn-primary" id="requestersSearchButton" type="button" onclick="if(typeof window.app !== 'undefined' && window.app.performSearch) { window.app.performSearch(); } else { console.error('App not properly initialized'); }">Search</button>
+                    </div>
+                  </div>
+                  <div id="requestersResults" class="results-container">
+                    <div class="text-center initial-message">
+                      <p>Enter a search term to find requesters</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="spinnerOverlay" class="d-none">
+        <div class="spinner-border text-primary" role="status">
+          <span class="sr-only">Loading...</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js" integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV" crossorigin="anonymous"></script>
+    <script src="scripts/app.js"></script>
+    <script src="scripts/change-form.js"></script>
+  </body>
+</html>
