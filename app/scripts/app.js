@@ -1859,8 +1859,9 @@ function runDiagnostics() {
         const authToken = btoa(app.apiKey + ':X');
         console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
         
-        // Build the query
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
+        // Build the query - exactly matching the documented format
+        // For agents whose first name or last name starts with 'query'
+        const queryString = `~[first_name|last_name]:'${query}'`;
         const encodedQuery = encodeURIComponent(queryString);
         const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
         console.log('Request URL:', apiUrl);
