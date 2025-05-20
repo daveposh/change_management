@@ -1784,8 +1784,9 @@ function runDiagnostics() {
       queryString = searchTerm;
     } else {
       // Build a simple query for first_name, last_name, or email
-      console.log('Using simple query with prefix search');
-      queryString = `~[first_name|last_name|email]:'${searchTerm}'`;
+      // Per Freshservice docs, the query format should be "\"name:\'John\'\"" (with escaped quotes)
+      console.log('Using simple query with OR conditions');
+      queryString = `"first_name:'${searchTerm}'" OR "last_name:'${searchTerm}'" OR "email:'${searchTerm}'"`;
     }
     
     // Perform search based on active tab with the query
@@ -1875,9 +1876,9 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      // Use the query parameter directly (it might be an advanced query)
+      // According to Freshservice API docs, query should be without quotes in the URL parameter
       const encodedQuery = encodeURIComponent(query);
-      const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
+      const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2094,9 +2095,9 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query (use the raw query parameter)
+        // Build the query (use the raw query parameter without quotes)
         const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
+        const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
         console.log('Direct fetch URL:', apiUrl);
         
                   // Try to use rate-limited client.request if available
@@ -2307,9 +2308,9 @@ function runDiagnostics() {
       };
       
       // Build URL with proper encoding
-      // Use the query parameter directly (it might be an advanced query)
+      // According to Freshservice API docs, query should be without quotes in the URL parameter
       const encodedQuery = encodeURIComponent(query);
-      const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
+      const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2526,9 +2527,9 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query (use the raw query parameter)
+        // Build the query (use the raw query parameter without quotes)
         const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
+        const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
         console.log('Direct fetch URL:', apiUrl);
         
         // Try to use rate-limited client.request if available
