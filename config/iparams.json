@@ -2,16 +2,22 @@
   "api_url": {
     "display_name": "Freshservice API URL",
     "description": "Enter your Freshservice instance URL (e.g., https://yourcompany.freshservice.com) - the https:// prefix will be added automatically if omitted",
-    "type": "text",
+    "type": "domain",
     "required": true,
-    "secure": false
+    "secure": false,
+    "type_attributes": {
+      "product": "freshservice"
+    }
   },
   "api_key": {
     "display_name": "API Key",
-    "description": "Enter your Freshservice API key",
-    "type": "text",
+    "description": "Enter your Freshservice API key from the admin portal",
+    "type": "api_key",
     "required": true,
-    "secure": true
+    "secure": true,
+    "type_attributes": {
+      "product": "freshservice"
+    }
   },
   "app_title": {
     "display_name": "Application Title",
@@ -19,6 +25,23 @@
     "type": "text",
     "required": true,
     "secure": false,
-    "default_value": "CompanyName Change Management"
+    "default_value": "Change Management"
+  },
+  "change_types": {
+    "display_name": "Available Change Types",
+    "description": "Select the change types that will be available in your app",
+    "type": "multiselect",
+    "required": true,
+    "options": [
+      "Standard Change",
+      "Non-Production Change",
+      "Emergency Change",
+      "Non-Standard Change"
+    ],
+    "default_value": [
+      "Standard Change",
+      "Emergency Change",
+      "Non-Standard Change"
+    ]
   }
 }

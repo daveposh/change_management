@@ -349,18 +349,71 @@ function createFakeClient() {
     
     // Load API configuration
     if (client && client.iparams && typeof client.iparams.get === 'function') {
+      console.log('Client has iparams.get, loading configuration from installation settings');
       loadApiConfiguration(client);
     } else {
-      // For mock client, try using dev params if available
-      app.apiUrl = window.__DEV_PARAMS__?.api_url || 'https://example.freshservice.com';
-      app.apiKey = window.__DEV_PARAMS__?.api_key || '';
-      app.appTitle = window.__DEV_PARAMS__?.app_title || 'CXI Change Management';
+      console.warn('Client is missing iparams.get function, trying alternative config sources');
+      
+      // Try to get configuration from various sources in order of preference
+      let configFound = false;
+      
+      // 1. Check if config was passed via URL parameters (for dev/testing)
+      if (window.__DEV_PARAMS__?.api_url && window.__DEV_PARAMS__?.api_key) {
+        console.log('Using configuration from URL parameters');
+        app.apiUrl = window.__DEV_PARAMS__.api_url;
+        app.apiKey = window.__DEV_PARAMS__.api_key;
+        app.appTitle = window.__DEV_PARAMS__?.app_title || 'Change Management';
+        configFound = true;
+      }
+      
+      // 2. Check if config is available from localStorage (persisted from previous session)
+      if (!configFound && window.localStorage) {
+        try {
+          const storedConfig = localStorage.getItem('appConfig');
+          if (storedConfig) {
+            const config = JSON.parse(storedConfig);
+            console.log('Using configuration from localStorage');
+            app.apiUrl = config.apiUrl;
+            app.apiKey = config.apiKey; 
+            app.appTitle = config.appTitle || 'Change Management';
+            configFound = true;
+          }
+        } catch (e) {
+          console.error('Error reading config from localStorage:', e);
+        }
+      }
+      
+      // 3. Finally fall back to defaults if nothing else worked
+      if (!configFound) {
+        console.warn('No configuration found, using defaults');
+        app.apiUrl = 'https://example.freshservice.com';
+        app.apiKey = '';
+        app.appTitle = 'Change Management';
+        
+        showWarning('No configuration found. Please reinstall the app with proper settings or contact administrator.');
+      }
       
       // Update the UI with the title
       updateAppTitle(app.appTitle);
       
-      console.log('Using development configuration:', { apiUrl: app.apiUrl, appTitle: app.appTitle });
-      showWarning('Using development configuration. Contact administrator if search doesn\'t work.');
+      // Save working config to localStorage for persistence
+      if (app.apiUrl && app.apiKey && window.localStorage) {
+        try {
+          localStorage.setItem('appConfig', JSON.stringify({
+            apiUrl: app.apiUrl,
+            apiKey: app.apiKey,
+            appTitle: app.appTitle
+          }));
+        } catch (e) {
+          console.error('Error saving config to localStorage:', e);
+        }
+      }
+      
+      console.log('Using configuration:', { 
+        apiUrl: app.apiUrl, 
+        hasApiKey: !!app.apiKey, 
+        appTitle: app.appTitle 
+      });
     }
   }
   
@@ -387,51 +440,139 @@ function createFakeClient() {
       showError('Cannot access app configuration. Please contact your administrator.');
       return;
     }
+
+    // Try to load app settings first, then fall back to iparams if needed
+    if (client.request && typeof client.request.get === 'function') {
+      console.log('Attempting to load configuration from app settings...');
+      
+      client.request.get('https://{{iparam.api_url}}/api/app/settings')
+        .then(function (data) {
+          try {
+            const appSettings = JSON.parse(data.response);
+            console.log('App settings loaded successfully');
+            
+            // Process API URL from app settings
+            if (appSettings.api_url) {
+              let apiUrl = appSettings.api_url;
+              
+              // Process the API URL (add https:// if needed)
+              if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+                apiUrl = 'https://' + apiUrl;
+                console.log('Added https:// prefix to API URL:', apiUrl);
+              } else if (apiUrl.startsWith('http://')) {
+                apiUrl = apiUrl.replace('http://', 'https://');
+                console.log('Converted HTTP to HTTPS for API URL:', apiUrl);
+              }
+              
+              // Remove trailing slash if present
+              if (apiUrl.endsWith('/')) {
+                apiUrl = apiUrl.slice(0, -1);
+              }
+              
+              app.apiUrl = apiUrl;
+            }
+            
+            // Process API key from app settings
+            if (appSettings.api_key) {
+              app.apiKey = appSettings.api_key;
+            }
+            
+            // Set app title from app settings
+            if (appSettings.app_title) {
+              app.appTitle = appSettings.app_title;
+              updateAppTitle(app.appTitle);
+            }
+            
+            console.log('Configuration loaded from app settings:', {
+              apiUrl: app.apiUrl,
+              hasApiKey: !!app.apiKey,
+              appTitle: app.appTitle
+            });
+            
+            // If we're missing essential config, fall back to iparams
+            if (!app.apiUrl || !app.apiKey) {
+              console.warn('Incomplete app settings, falling back to iparams...');
+              loadFromIparams();
+            }
+          } catch (error) {
+            console.error('Error parsing app settings:', error);
+            loadFromIparams();
+          }
+        })
+        .catch(function (error) {
+          console.error('Error loading app settings:', error);
+          loadFromIparams();
+        });
+    } else {
+      loadFromIparams();
+    }
     
-    client.iparams.get()
-      .then(function(data) {
-        console.log('Installation parameters received:', data);
-        
-        if (data && data.api_url && data.api_key) {
-          let apiUrl = data.api_url;
-          const apiKey = data.api_key;
+    // Helper function to load from iparams
+    function loadFromIparams() {
+      client.iparams.get()
+        .then(function(data) {
+          console.log('Installation parameters received:', data);
           
-          // Process the API URL
-          // Add https:// if not present
-          if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-            apiUrl = 'https://' + apiUrl;
-            console.log('Added https:// prefix to API URL:', apiUrl);
-          } else if (apiUrl.startsWith('http://')) {
-            // Replace http:// with https://
-            apiUrl = apiUrl.replace('http://', 'https://');
-            console.log('Converted HTTP to HTTPS for API URL:', apiUrl);
+          // Check if we have data returned, even empty object
+          if (!data) {
+            console.error('No data returned from iparams.get()');
+            showError('Failed to load installation parameters. Please check your app configuration.');
+            return;
           }
           
-          // Remove trailing slash if present
-          if (apiUrl.endsWith('/')) {
-            apiUrl = apiUrl.slice(0, -1);
+          // Process API URL and key if available
+          if (data.api_url && data.api_key) {
+            let apiUrl = data.api_url;
+            const apiKey = data.api_key;
+            
+            // Process the API URL
+            // Add https:// if not present
+            if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+              apiUrl = 'https://' + apiUrl;
+              console.log('Added https:// prefix to API URL:', apiUrl);
+            } else if (apiUrl.startsWith('http://')) {
+              // Replace http:// with https://
+              apiUrl = apiUrl.replace('http://', 'https://');
+              console.log('Converted HTTP to HTTPS for API URL:', apiUrl);
+            }
+            
+            // Remove trailing slash if present
+            if (apiUrl.endsWith('/')) {
+              apiUrl = apiUrl.slice(0, -1);
+            }
+            
+            // Store the processed values
+            app.apiUrl = apiUrl;
+            app.apiKey = apiKey;
+            console.log('API configuration loaded successfully:', { apiUrl: app.apiUrl, hasApiKey: !!app.apiKey });
+          } else {
+            console.warn('Missing API URL or key in configuration');
+            // Still continue processing other parameters
           }
-          
-          // Store the processed values
-          app.apiUrl = apiUrl;
-          app.apiKey = apiKey;
           
           // Set the app title from configuration if available
           if (data.app_title) {
             app.appTitle = data.app_title;
             updateAppTitle(data.app_title);
+            console.log('App title set from configuration:', app.appTitle);
+          } else {
+            // Use default title
+            app.appTitle = 'Change Management';
+            updateAppTitle(app.appTitle);
+            console.log('Using default app title');
           }
           
-          console.log('API configuration loaded successfully:', { apiUrl: app.apiUrl, hasApiKey: !!app.apiKey, appTitle: app.appTitle });
-        } else {
-          console.error('Missing API parameters in configuration');
-          showError('API configuration is incomplete. Please check installation parameters.');
-        }
-      })
-      .catch(function(error) {
-        console.error('Error loading API configuration:', error);
-        showError('Failed to load API configuration. Please refresh the page.');
-      });
+          // Check if we have all required configuration
+          if (!app.apiUrl || !app.apiKey) {
+            console.error('API configuration is incomplete');
+            showError('API configuration is incomplete. Please check installation parameters.');
+          }
+        })
+        .catch(function(error) {
+          console.error('Error loading API configuration:', error);
+          showError('Failed to load API configuration. Please refresh the page.');
+        });
+    }
   }
   
   // Setup event listeners for the app
@@ -1076,8 +1217,10 @@ function createFakeClient() {
   function updateAppTitle(title) {
     const titleElement = document.getElementById('appTitle');
     if (titleElement) {
-      titleElement.textContent = title || 'CXI Change Management';
-      console.log('Application title updated to:', title);
+      // Make sure we don't use null/undefined title, use configured default or fallback
+      const displayTitle = title || app.appTitle || 'Change Management';
+      titleElement.textContent = displayTitle;
+      console.log('Application title updated to:', displayTitle);
     } else {
       console.error('Title element not found in the DOM');
     }

@@ -157,15 +157,79 @@ function initializeChangeForm() {
   const changeTypeDescription = document.getElementById('changeTypeDescription');
   
   if (changeTypeSelect && changeTypeDescription) {
+    // Set up the change handler
     changeTypeSelect.addEventListener('change', function() {
       const selectedType = this.value;
-      if (selectedType && changeTypeDescriptions[selectedType]) {
-        changeTypeDescription.innerHTML = `<div class="alert alert-info">${changeTypeDescriptions[selectedType]}</div>`;
+      if (selectedType && changeTypeDescriptions[selectedType.toLowerCase()]) {
+        changeTypeDescription.innerHTML = `<div class="alert alert-info">${changeTypeDescriptions[selectedType.toLowerCase()]}</div>`;
       } else {
         changeTypeDescription.innerHTML = '';
       }
     });
+    
+    // Load change types from configuration
+    loadChangeTypesFromConfig(changeTypeSelect);
   }
+}
+
+/**
+ * Load change types from iparams configuration
+ * @param {HTMLElement} selectElement - The select dropdown element to populate
+ */
+function loadChangeTypesFromConfig(selectElement) {
+  // Clear existing options except the placeholder
+  while (selectElement.options.length > 1) {
+    selectElement.remove(1);
+  }
+  
+  // Try to get client instance
+  if (window.client && typeof window.client.iparams?.get === 'function') {
+    // Get change types from iparams
+    window.client.iparams.get('change_types')
+      .then(function(changeTypes) {
+        if (Array.isArray(changeTypes) && changeTypes.length > 0) {
+          console.log('Loaded change types from config:', changeTypes);
+          
+          // Add each change type to the dropdown
+          changeTypes.forEach(function(type) {
+            const option = document.createElement('option');
+            option.value = type.toLowerCase().replace(/ /g, '-');
+            option.textContent = type;
+            selectElement.appendChild(option);
+          });
+        } else {
+          console.warn('No change types found in configuration, using defaults');
+          addDefaultChangeTypes(selectElement);
+        }
+      })
+      .catch(function(error) {
+        console.error('Error loading change types:', error);
+        addDefaultChangeTypes(selectElement);
+      });
+  } else {
+    console.warn('Client iparams not available, using default change types');
+    addDefaultChangeTypes(selectElement);
+  }
+}
+
+/**
+ * Add default change types to the select element
+ * @param {HTMLElement} selectElement - The select dropdown element to populate
+ */
+function addDefaultChangeTypes(selectElement) {
+  const defaultTypes = [
+    { value: 'standard', label: 'Standard Change' },
+    { value: 'non-production', label: 'Non-Production Change' },
+    { value: 'emergency', label: 'Emergency Change' },
+    { value: 'non-standard', label: 'Non-Standard Change' }
+  ];
+  
+  defaultTypes.forEach(function(type) {
+    const option = document.createElement('option');
+    option.value = type.value;
+    option.textContent = type.label;
+    selectElement.appendChild(option);
+  });
 }
 
 // Initialize risk assessment tab and questionnaire
@@ -188,56 +252,61 @@ function initializeRiskAssessment() {
     riskPane.setAttribute('role', 'tabpanel');
     
     // Build the complete questionnaire HTML in one operation
-    let questionnaireHtml = `
-      <h4>Change Risk Assessment</h4>
-      <p>Please answer all questions to determine the risk level of this change.</p>
-      <form id="riskForm">
-    `;
-    
-    // Add questions
-    riskAssessment.questions.forEach(question => {
-      questionnaireHtml += `
-        <div class="form-group">
-          <label>${question.text}</label>
-          <div class="ml-4">
+    const buildQuestionnaireHtml = function() {
+      let html = `
+        <h4>Change Risk Assessment</h4>
+        <p>Please answer all questions to determine the risk level of this change.</p>
+        <form id="riskForm">
       `;
       
-      question.options.forEach(option => {
-        questionnaireHtml += `
-          <div class="form-check">
-            <input class="form-check-input" type="radio" name="${question.id}" id="${question.id}_${option.value}" value="${option.value}">
-            <label class="form-check-label" for="${question.id}_${option.value}">
-              ${option.text}
-            </label>
+      // Add questions
+      riskAssessment.questions.forEach(question => {
+        html += `
+          <div class="form-group">
+            <label>${question.text}</label>
+            <div class="ml-4">
+        `;
+        
+        question.options.forEach(option => {
+          html += `
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="${question.id}" id="${question.id}_${option.value}" value="${option.value}">
+              <label class="form-check-label" for="${question.id}_${option.value}">
+                ${option.text}
+              </label>
+            </div>
+          `;
+        });
+        
+        html += `
+            </div>
           </div>
         `;
       });
       
-      questionnaireHtml += `
+      // Add risk score result section
+      html += `
+        <div class="mt-4">
+          <button type="button" class="btn btn-primary" id="calculateRiskBtn">Calculate Risk Level</button>
+        </div>
+        
+        <div id="riskResult" class="mt-3 d-none">
+          <div class="card">
+            <div class="card-header" id="riskScoreHeader">Risk Assessment</div>
+            <div class="card-body">
+              <h5 class="card-title">Risk Score: <span id="riskScore">0</span></h5>
+              <p class="card-text">Risk Level: <span id="riskLevel">Not calculated</span></p>
+            </div>
           </div>
         </div>
+        </form>
       `;
-    });
-    
-    // Add risk score result section
-    questionnaireHtml += `
-      <div class="mt-4">
-        <button type="button" class="btn btn-primary" id="calculateRiskBtn">Calculate Risk Level</button>
-      </div>
       
-      <div id="riskResult" class="mt-3 d-none">
-        <div class="card">
-          <div class="card-header" id="riskScoreHeader">Risk Assessment</div>
-          <div class="card-body">
-            <h5 class="card-title">Risk Score: <span id="riskScore">0</span></h5>
-            <p class="card-text">Risk Level: <span id="riskLevel">Not calculated</span></p>
-          </div>
-        </div>
-      </div>
-      </form>
-    `;
+      return html;
+    };
     
-    riskPane.innerHTML = questionnaireHtml;
+    // Set the innerHTML using the built HTML
+    riskPane.innerHTML = buildQuestionnaireHtml();
     formTabContent.appendChild(riskPane);
     
     // Add event listener for risk calculation
@@ -621,35 +690,40 @@ function renderSearchResults(type, results) {
     return;
   }
   
-  // Define HTML content and build it in one go
-  let html = '<div class="list-group">';
-  
-  results.forEach(user => {
-    const displayName = user.first_name && user.last_name 
-      ? `${user.first_name} ${user.last_name}`
-      : (user.name || 'Unknown User');
-      
-    html += `
-      <a href="#" class="list-group-item list-group-item-action" 
-         data-id="${user.id}" 
-         data-name="${displayName}" 
-         data-email="${user.email || ''}" 
-         data-department="${user.department_name || user.department || ''}"
-         onclick="selectUser('${type}', this.dataset)">
-        <div class="d-flex justify-content-between align-items-center">
-          <div>
-            <h5 class="mb-1">${displayName}</h5>
-            <p class="mb-1">${user.email || ''}</p>
-            ${user.department_name || user.department ? `<small class="text-muted">Department: ${user.department_name || user.department}</small>` : ''}
+  // Build HTML content in a separate function to avoid race conditions
+  const buildHtml = function(resultsData) {
+    let content = '<div class="list-group">';
+    
+    resultsData.forEach(user => {
+      const displayName = user.first_name && user.last_name 
+        ? `${user.first_name} ${user.last_name}`
+        : (user.name || 'Unknown User');
+        
+      content += `
+        <a href="#" class="list-group-item list-group-item-action" 
+           data-id="${user.id}" 
+           data-name="${displayName}" 
+           data-email="${user.email || ''}" 
+           data-department="${user.department_name || user.department || ''}"
+           onclick="selectUser('${type}', this.dataset)">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="mb-1">${displayName}</h5>
+              <p class="mb-1">${user.email || ''}</p>
+              ${user.department_name || user.department ? `<small class="text-muted">Department: ${user.department_name || user.department}</small>` : ''}
+            </div>
+            <span class="badge badge-primary badge-pill">Select</span>
           </div>
-          <span class="badge badge-primary badge-pill">Select</span>
-        </div>
-      </a>
-    `;
-  });
+        </a>
+      `;
+    });
+    
+    content += '</div>';
+    return content;
+  };
   
-  html += '</div>';
-  resultsContainer.innerHTML = html;
+  // Set the innerHTML with the complete HTML string
+  resultsContainer.innerHTML = buildHtml(results);
 }
 
 // Add to global scope for HTML onclick handlers

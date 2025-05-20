@@ -52,11 +52,28 @@ fdk pack
 
 ### Configuration
 
-During installation, the app requires the following parameters:
+This app uses a dual configuration approach:
 
-- **Application Title** - The title that appears at the top of the app (defaults to "CompanyName Change Management")
-- **Freshservice API URL** - Your Freshservice instance URL (e.g., https://yourcompany.freshservice.com)
-- **API Key** - Your Freshservice API key from the Freshservice admin portal
+1. **Installation Parameters (iparams.json)**:
+   - Configured during app installation through an interactive UI
+   - Provides real-time validation of inputs
+   - Allows configuration of:
+     - **Freshservice API URL** - Your instance URL with domain validation
+     - **API Key** - Your Freshservice API key from the admin portal (securely stored)
+     - **Application Title** - The title that appears at the top of the app
+     - **Available Change Types** - Select which change types will be available in the app
+
+2. **App Settings (app_settings.json)**:
+   - Can be updated without republishing the app
+   - Configured by administrators through the Freshworks Developer Portal
+   - Provides a way to update credentials after installation
+   - Perfect for API keys that need to be rotated periodically
+
+For local development, you can test:
+- Installation parameters at http://localhost:10001/custom_configs
+- App settings at http://localhost:10001/app_settings
+
+Both configurations are automatically validated through client-side scripts (iparams.js) and server-side validation (server.js).
 
 ## API Resources
 

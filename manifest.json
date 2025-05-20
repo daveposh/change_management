@@ -23,6 +23,12 @@
       "skip_test_coverage": true
     }
   },
+  "features": {
+    "app_settings": {
+      "enabled": true,
+      "description": "Configure API credentials and app title"
+    }
+  },
   "csp": {
     "frame-src": [
       "self",
