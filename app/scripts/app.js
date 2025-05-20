@@ -1874,10 +1874,11 @@ function runDiagnostics() {
         }
       };
       
-      // Build URL with proper encoding
-      // Use the query parameter with properly encoded query syntax
-      const encodedQuery = encodeURIComponent(query);
-      const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
+      // Build URL with proper encoding - using the exact format provided
+      // First build the query string, then encode it
+      const queryString = `~[first_name|last_name|email]:'${query}'`;
+      const encodedQuery = encodeURIComponent(queryString);
+      const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2107,9 +2108,10 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query using the query parameter with advanced syntax
-        const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/agents?query=${encodedQuery}`;
+        // Build the query using the exact format provided
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiUrl = `${app.apiUrl}/api/v2/agents?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
                   // Try to use rate-limited client.request if available
@@ -2319,10 +2321,11 @@ function runDiagnostics() {
         }
       };
       
-      // Build URL with proper encoding
-      // Use the query parameter with properly encoded query syntax
-      const encodedQuery = encodeURIComponent(query);
-      const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
+      // Build URL with proper encoding - using the exact format provided
+      // First build the query string, then encode it
+      const queryString = `~[first_name|last_name|email]:'${query}'`;
+      const encodedQuery = encodeURIComponent(queryString);
+      const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
       console.log('Request URL:', apiUrl);
       
       // Make the API request with rate limiting
@@ -2552,9 +2555,10 @@ function runDiagnostics() {
         // Create auth token
         const authToken = btoa(app.apiKey + ':X');
         
-        // Build the query using the query parameter with advanced syntax
-        const encodedQuery = encodeURIComponent(query);
-        const apiUrl = `${app.apiUrl}/api/v2/requesters?query=${encodedQuery}`;
+        // Build the query using the exact format provided
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiUrl = `${app.apiUrl}/api/v2/requesters?query="${encodedQuery}"`;
         console.log('Direct fetch URL:', apiUrl);
         
         // Try to use rate-limited client.request if available
