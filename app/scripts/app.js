@@ -284,7 +284,63 @@ function runDiagnostics() {
       searchUsers,
       searchRequesters,
       onClientReady,
-      performSearch
+      performSearch,
+      // Add renderResults function to the global app object
+      renderResults: function(type, results) {
+        console.log(`Rendering ${results.length} results for ${type}`);
+        
+        // This is a simple implementation that formats search results to the DOM
+        // Since this is used by the change-form.js, we delegate to its renderer
+        if (type === 'users' || type === 'requesters') {
+          // First, check if there's a more specific search handler in change-form.js
+          if (window.renderSearchResults && typeof window.renderSearchResults === 'function') {
+            return window.renderSearchResults(type, results);
+          }
+          
+          // Otherwise, implement basic rendering here
+          const resultsContainerId = `${type}Results`;
+          const resultsContainer = document.getElementById(resultsContainerId);
+          
+          if (!resultsContainer) {
+            console.error(`Results container '${resultsContainerId}' not found in the DOM`);
+            return;
+          }
+          
+          if (results.length === 0) {
+            resultsContainer.innerHTML = `<div class="alert alert-info">No ${type} found matching your search criteria.</div>`;
+            return;
+          }
+          
+          // Build HTML for results
+          let html = '<div class="list-group">';
+          
+          results.forEach(result => {
+            const displayName = `${result.first_name || ''} ${result.last_name || ''}`.trim() || 'Unknown';
+            const email = result.email || '';
+            
+            html += `
+              <div class="list-group-item" 
+                   data-id="${result.id}" 
+                   data-name="${displayName}" 
+                   data-email="${email}" 
+                   data-department="${result.department || ''}"
+                   onclick="selectUser('${type === 'users' ? 'agent' : 'requester'}', this.dataset)">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <h5 class="mb-1">${displayName}</h5>
+                    <p class="mb-1">${email}</p>
+                    ${result.department ? `<small class="text-muted">Department: ${result.department}</small>` : ''}
+                  </div>
+                  <span class="badge badge-primary badge-pill">Select</span>
+                </div>
+              </div>
+            `;
+          });
+          
+          html += '</div>';
+          resultsContainer.innerHTML = html;
+        }
+      }
     };
     
     // Start app initialization
@@ -1782,19 +1838,10 @@ function runDiagnostics() {
       toggleSpinner(true);
       
       try {
-        // Fix query format - the Freshservice API may have specific format requirements
-        let apiPath;
-        
-        // Check if this is an email search
-        if (query.includes('@')) {
-          // Search by email directly
-          const encodedEmail = encodeURIComponent(query);
-          apiPath = `/api/v2/agents?email=${encodedEmail}`;
-        } else {
-          // For name search, use the "query" parameter with simpler format
-          const encodedQuery = encodeURIComponent(query);
-          apiPath = `/api/v2/agents?query=${encodedQuery}`;
-        }
+        // Restore the original working query format for agents
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiPath = `/api/v2/agents?query="${encodedQuery}"`;
         
         // Ensure we're using the full URL
         const fullApiUrl = app.apiUrl + apiPath;
@@ -1828,17 +1875,18 @@ function runDiagnostics() {
             
             if (data && data.agents && Array.isArray(data.agents)) {
               console.log(`Found ${data.agents.length} agents matching the query`);
-              renderResults('users', data.agents);
+              // Call the globally defined renderResults function to display in the UI
+              app.renderResults('users', data.agents);
               resolve(data.agents);
             } else {
               console.warn('Response contained no agents array:', data);
               // Check if data is in a different format
               if (data && Array.isArray(data)) {
                 console.log('Data appears to be an array directly, using as agents');
-                renderResults('users', data);
+                app.renderResults('users', data);
                 resolve(data);
               } else {
-                renderResults('users', []);
+                app.renderResults('users', []);
                 resolve([]);
               }
             }
@@ -1861,7 +1909,7 @@ function runDiagnostics() {
             }
             
             showError(errorMessage);
-            renderResults('users', []);
+            app.renderResults('users', []);
             resolve([]);
           })
           .finally(function() {
@@ -1918,17 +1966,18 @@ function runDiagnostics() {
               
               if (data && data.agents && Array.isArray(data.agents)) {
                 console.log(`Found ${data.agents.length} agents matching the query`);
-                renderResults('users', data.agents);
+                // Call the globally defined renderResults function to display in the UI
+                app.renderResults('users', data.agents);
                 resolve(data.agents);
               } else {
                 console.warn('Response contained no agents array:', data);
                 // Check if data is in a different format
                 if (data && Array.isArray(data)) {
                   console.log('Data appears to be an array directly, using as agents');
-                  renderResults('users', data);
+                  app.renderResults('users', data);
                   resolve(data);
                 } else {
-                  renderResults('users', []);
+                  app.renderResults('users', []);
                   resolve([]);
                 }
               }
@@ -1951,7 +2000,7 @@ function runDiagnostics() {
               }
               
               showError(errorMessage);
-              renderResults('users', []);
+              app.renderResults('users', []);
               resolve([]);
             })
             .finally(function() {
@@ -1964,7 +2013,7 @@ function runDiagnostics() {
       } catch (error) {
         console.error('Error in search:', error);
         showError(`Error making API request: ${error.message}`);
-        renderResults('users', []);
+        app.renderResults('users', []);
         toggleSpinner(false);
         return reject(error);
       }
@@ -1987,20 +2036,10 @@ function runDiagnostics() {
       
       try {
         // Fix query format - the Freshservice API may have specific format requirements
-        // Try with a simpler query format that doesn't use the special syntax
-        let apiPath;
-        
-        // Check if this is an email search
-        if (query.includes('@')) {
-          // Search by email directly
-          const encodedEmail = encodeURIComponent(query);
-          apiPath = `/api/v2/requesters?email=${encodedEmail}`;
-        } else {
-          // For name search, use the "query" parameter with simpler format
-          // This fixes the 400 Bad Request error
-          const encodedQuery = encodeURIComponent(query);
-          apiPath = `/api/v2/requesters?query=${encodedQuery}`;
-        }
+        // For requesters, we'll try the same format as agents since both may work similarly
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiPath = `/api/v2/requesters?query="${encodedQuery}"`;
         
         // Ensure we're using the full URL
         const fullApiUrl = app.apiUrl + apiPath;
@@ -2035,17 +2074,17 @@ function runDiagnostics() {
             
             if (data && data.requesters && Array.isArray(data.requesters)) {
               console.log(`Found ${data.requesters.length} requesters matching the query`);
-              renderResults('requesters', data.requesters);
+              app.renderResults('requesters', data.requesters);
               resolve(data.requesters);
             } else {
               console.warn('Response contained no requesters array:', data);
               // Check if data is in a different format
               if (data && Array.isArray(data)) {
                 console.log('Data appears to be an array directly, using as requesters');
-                renderResults('requesters', data);
+                app.renderResults('requesters', data);
                 resolve(data);
               } else {
-                renderResults('requesters', []);
+                app.renderResults('requesters', []);
                 resolve([]);
               }
             }
@@ -2068,7 +2107,7 @@ function runDiagnostics() {
             }
             
             showError(errorMessage);
-            renderResults('requesters', []);
+            app.renderResults('requesters', []);
             resolve([]);
           })
           .finally(function() {
@@ -2125,17 +2164,17 @@ function runDiagnostics() {
               
               if (data && data.requesters && Array.isArray(data.requesters)) {
                 console.log(`Found ${data.requesters.length} requesters matching the query`);
-                renderResults('requesters', data.requesters);
+                app.renderResults('requesters', data.requesters);
                 resolve(data.requesters);
               } else {
                 console.warn('Response contained no requesters array:', data);
                 // Check if data is in a different format
                 if (data && Array.isArray(data)) {
                   console.log('Data appears to be an array directly, using as requesters');
-                  renderResults('requesters', data);
+                  app.renderResults('requesters', data);
                   resolve(data);
                 } else {
-                  renderResults('requesters', []);
+                  app.renderResults('requesters', []);
                   resolve([]);
                 }
               }
@@ -2158,7 +2197,7 @@ function runDiagnostics() {
               }
               
               showError(errorMessage);
-              renderResults('requesters', []);
+              app.renderResults('requesters', []);
               resolve([]);
             })
             .finally(function() {
@@ -2171,7 +2210,7 @@ function runDiagnostics() {
       } catch (error) {
         console.error('Error in search:', error);
         showError(`Error making API request: ${error.message}`);
-        renderResults('requesters', []);
+        app.renderResults('requesters', []);
         toggleSpinner(false);
         return reject(error);
       }

@@ -838,6 +838,9 @@ function renderSearchResults(type, results) {
   resultsContainer.innerHTML = buildHtml(results);
 }
 
+// Expose this function globally for app.js to use
+window.renderSearchResults = renderSearchResults;
+
 // Add to global scope for HTML onclick handlers
 window.selectUser = function(type, userData) {
   if (!userData) {
