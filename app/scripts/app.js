@@ -2070,15 +2070,7 @@ function runDiagnostics() {
             // Log error details
             console.error(`Requester search error: ${response.status} ${response.statusText}`);
             
-            // Try to get more error details
-            response.text().then(text => {
-              try {
-                const errorData = JSON.parse(text);
-                console.error('Error details:', errorData);
-              } catch(e) {
-                console.error('Error response (not JSON):', text);
-              }
-            }).catch(e => {/* ignore read errors */});
+                        // Try to get more error details            response.text().then(text => {              try {                const errorData = JSON.parse(text);                console.error('Error details:', errorData);              } catch(e) {                console.error('Error response (not JSON):', text);              }            }).catch(() => {/* ignore read errors */});
             
             throw new Error(`API returned ${response.status}: ${response.statusText}`);
           }
@@ -2186,65 +2178,5 @@ function runDiagnostics() {
       .then(data => {
         resolve(data);
       })
-      .catch(error => {
-        console.error('API test failed:', error);
-        reject(error);
-      });
-    });
-  }
-  
-  // Update the application title displayed on the page
-  function updateAppTitle(title) {
-    const titleElement = document.getElementById('appTitle');
-    if (titleElement) {
-      // Make sure we don't use null/undefined title, use configured default or fallback
-      const displayTitle = title || app.appTitle || 'Change Management';
-      titleElement.textContent = displayTitle;
-      console.log('Application title updated to:', displayTitle);
-    } else {
-      console.error('Title element not found in the DOM');
-    }
-  }
-  
-  // Show error message in the UI
-  function showError(message, error) {
-    console.error("Error:", message, error || '');
-    
-    // Hide spinner if visible
-    toggleSpinner(false);
-    
-    // Try to use the notification system from change-form.js if available
-    if (typeof showNotification === 'function') {
-      return showNotification(message, 'danger');
-    }
-    
-    // Fallback to creating our own error message
-    const container = document.querySelector('.container');
-    if (!container) return;
-    
-    const errorElement = document.createElement('div');
-    errorElement.className = 'alert alert-danger alert-dismissible fade show';
-    errorElement.setAttribute('role', 'alert');
-    errorElement.innerHTML = `
-      ${message}
-      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-        <span aria-hidden="true">&times;</span>
-      </button>
-    `;
-    
-    // Add to page
-    container.insertBefore(errorElement, container.firstChild);
-    
-    // Auto-dismiss after 8 seconds
-    setTimeout(() => {
-      if (errorElement.parentNode) {
-        errorElement.classList.remove('show');
-        setTimeout(() => {
-          if (errorElement.parentNode) {
-            errorElement.parentNode.removeChild(errorElement);
-          }
-        }, 150);
-      }
-    }, 8000);
-  }
+      .catch(error => {              console.error('API test failed:', error);              reject(error);            });          });        }                // Update the application title displayed on the page        function updateAppTitle(title) {          const titleElement = document.getElementById('appTitle');          if (titleElement) {            // Make sure we don't use null/undefined title, use configured default or fallback            const displayTitle = title || app.appTitle || 'Change Management';            titleElement.textContent = displayTitle;            console.log('Application title updated to:', displayTitle);          } else {            console.error('Title element not found in the DOM');          }        }                // Show error message in the UI        function showError(message, error) {          console.error("Error:", message, error || '');                    // Hide spinner if visible          toggleSpinner(false);                    // Try to use the notification system from change-form.js if available          if (typeof showNotification === 'function') {            return showNotification(message, 'danger');          }                    // Fallback to creating our own error message          const container = document.querySelector('.container');          if (!container) return;                    const errorElement = document.createElement('div');          errorElement.className = 'alert alert-danger alert-dismissible fade show';          errorElement.setAttribute('role', 'alert');          errorElement.innerHTML = `            ${message}            <button type="button" class="close" data-dismiss="alert" aria-label="Close">              <span aria-hidden="true">&times;</span>            </button>          `;                    // Add to page          container.insertBefore(errorElement, container.firstChild);                    // Auto-dismiss after 8 seconds          setTimeout(() => {            if (errorElement.parentNode) {              errorElement.classList.remove('show');              setTimeout(() => {                if (errorElement.parentNode) {                  errorElement.parentNode.removeChild(errorElement);                }              }, 150);            }          }, 8000);        }
 })();
