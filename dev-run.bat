@@ -42,9 +42,9 @@ echo // Placeholder for config-manager.js > app\scripts\modules\config-manager.j
 echo // Placeholder for ui-manager.js > app\scripts\modules\ui-manager.js
 echo // Placeholder for user-search.js > app\scripts\modules\user-search.js
 
-REM Copy the non-module version to app.js
-copy app\scripts\app-legacy.js app\scripts\app.js
-echo console.log('Legacy mode enabled for local development'); >> app\scripts\app.js
+REM Copy the full implementation development version to app.js
+copy app\scripts\app-dev.js app\scripts\app.js
+echo console.log('Development mode enabled with mock data'); >> app\scripts\app.js
 
 REM Update index.html for development
 powershell -Command "$content = Get-Content app\index.html -Raw; $content = $content -replace '<script type=""module"" src=""scripts/app.js""></script>', '<script src=""scripts/app.js""></script>'; Set-Content app\index.html $content"

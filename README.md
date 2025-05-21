@@ -85,40 +85,95 @@ This app uses the following Freshservice API endpoints:
 
 For more information on the Freshservice API, refer to the [official documentation](https://api.freshservice.com/v2).
 
-## Development
+## Development Architecture
 
-### Project Structure
+This project uses a modern ES modules architecture with the following components:
 
-```
-.
-├── app/                # Application code
-│   ├── index.html      # Main HTML template
-│   ├── scripts/        # JavaScript files
-│   │   ├── app.js      # Core app functionality
-│   │   ├── change-form.js # Change form specific logic
-│   │   └── api-utils.js   # API rate limiting implementation
-│   └── styles/         # CSS styles
-├── config/             # App configuration
-│   └── iparams.json    # Installation parameters definition
-├── manifest.json       # App manifest
-├── README.md           # This file
-└── package.json        # NPM package configuration
-```
+- `app/scripts/modules/` - Contains modular JavaScript classes
+- `app/scripts/app.js` - Main entry point (ES modules version)
+- `app/scripts/app-legacy.js` - Non-module version for FDK validation
+- `app/scripts/app-dev.js` - Development version with mock data implementation
 
-### Local Development
+## Local Development
 
-1. Make changes to the app code as needed
-2. Use `fdk run` to test your changes locally
-3. Use `fdk validate` to ensure your app meets Freshworks requirements
-4. Use `fdk pack` to package the updated app for deployment
+### Running the App Locally
 
-### Testing
-
-Run the tests with:
+For local development with FDK:
 
 ```bash
-npm test
+# Start local development environment with mock data
+npm run dev
+
+# When finished, restore original ES module files
+npm run restore
+
+# Clean up development environment completely
+npm run clean
 ```
+
+The development environment:
+1. Creates a backup of your ES module files
+2. Replaces them with non-module versions that FDK can understand
+3. Uses mock data for searches, API calls, and configuration
+4. Provides a full working environment for testing UI and functionality
+
+### Development with Mock Data
+
+When running with `npm run dev`, the app uses mock data:
+
+- User searches return predefined test users
+- API calls are simulated with realistic delays
+- Client configuration uses default development values
+- Data storage uses localStorage for persistence
+
+This allows testing the full functionality without a real Freshservice instance.
+
+## FDK Validation and Packaging
+
+### Handling ES Modules in FDK
+
+The Freshworks Developer Kit (FDK) has limitations with ES modules. To work around this:
+
+1. We maintain modern ES module code in the main codebase
+2. A separate validation-friendly build is created for FDK validation and packaging
+3. The `validate.bat` script automates this process
+
+### Validation Process
+
+To validate and package the app:
+
+```
+npm run validate   # Run validation only
+npm run pack       # Run validation and create distributable package
+```
+
+The `validate.bat` script:
+1. Creates a build directory with non-module versions of files
+2. Fixes HTML to use traditional script loading
+3. Creates required FDK files (config/iparams.json, icon.svg)
+4. Runs FDK validation
+5. Packages the app, skipping code coverage requirements
+
+### Warnings and Test Coverage
+
+The FDK validation shows warnings related to code complexity and potential race conditions. For production deployment to the Freshworks Marketplace, you should:
+
+1. Address all warnings in the main codebase
+2. Create proper tests to achieve 80%+ code coverage
+3. Use `fdk pack` without the `-s` flag to validate test coverage
+
+## Deployment
+
+For production deployment:
+
+1. Run `npm run pack` to create the package
+2. The app package will be available as `build.zip` in the root directory
+3. Upload this file to the Freshworks Marketplace
+
+## Known Issues
+
+- Test coverage is currently below the 80% requirement for Marketplace submission
+- There are complexity warnings that should be addressed for production code
 
 ## Contributing
 
