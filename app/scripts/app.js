@@ -1782,10 +1782,19 @@ function runDiagnostics() {
       toggleSpinner(true);
       
       try {
-        // Build the query with proper encoding
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
-        const encodedQuery = encodeURIComponent(queryString);
-        const apiPath = `/api/v2/agents?query="${encodedQuery}"`;
+        // Fix query format - the Freshservice API may have specific format requirements
+        let apiPath;
+        
+        // Check if this is an email search
+        if (query.includes('@')) {
+          // Search by email directly
+          const encodedEmail = encodeURIComponent(query);
+          apiPath = `/api/v2/agents?email=${encodedEmail}`;
+        } else {
+          // For name search, use the "query" parameter with simpler format
+          const encodedQuery = encodeURIComponent(query);
+          apiPath = `/api/v2/agents?query=${encodedQuery}`;
+        }
         
         // Ensure we're using the full URL
         const fullApiUrl = app.apiUrl + apiPath;
@@ -1977,10 +1986,21 @@ function runDiagnostics() {
       toggleSpinner(true);
       
       try {
-        // Build the query with proper encoding - include email in search fields
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
-        const encodedQuery = encodeURIComponent(queryString);
-        const apiPath = `/api/v2/requesters?query="${encodedQuery}"`;
+        // Fix query format - the Freshservice API may have specific format requirements
+        // Try with a simpler query format that doesn't use the special syntax
+        let apiPath;
+        
+        // Check if this is an email search
+        if (query.includes('@')) {
+          // Search by email directly
+          const encodedEmail = encodeURIComponent(query);
+          apiPath = `/api/v2/requesters?email=${encodedEmail}`;
+        } else {
+          // For name search, use the "query" parameter with simpler format
+          // This fixes the 400 Bad Request error
+          const encodedQuery = encodeURIComponent(query);
+          apiPath = `/api/v2/requesters?query=${encodedQuery}`;
+        }
         
         // Ensure we're using the full URL
         const fullApiUrl = app.apiUrl + apiPath;
@@ -2242,5 +2262,47 @@ function runDiagnostics() {
     } else {
       console.error('Title element not found in the DOM');
     }
+  }
+  
+  // Show error message in the UI
+  function showError(message, error) {
+    console.error("Error:", message, error || '');
+    
+    // Hide spinner if visible
+    toggleSpinner(false);
+    
+    // Try to use the notification system from change-form.js if available
+    if (typeof showNotification === 'function') {
+      return showNotification(message, 'danger');
+    }
+    
+    // Fallback to creating our own error message
+    const container = document.querySelector('.container');
+    if (!container) return;
+    
+    const errorElement = document.createElement('div');
+    errorElement.className = 'alert alert-danger alert-dismissible fade show';
+    errorElement.setAttribute('role', 'alert');
+    errorElement.innerHTML = `
+      ${message}
+      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+      </button>
+    `;
+    
+    // Add to page
+    container.insertBefore(errorElement, container.firstChild);
+    
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => {
+      if (errorElement.parentNode) {
+        errorElement.classList.remove('show');
+        setTimeout(() => {
+          if (errorElement.parentNode) {
+            errorElement.parentNode.removeChild(errorElement);
+          }
+        }, 150);
+      }
+    }, 8000);
   }
 })();
