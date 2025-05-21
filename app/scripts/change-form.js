@@ -864,7 +864,7 @@ window.selectUser = function(type, userData) {
     // For all user types, populate department and other fields if they exist
     if (deptElement) {
       // Create a formatted text with all additional information
-      const additionalInfo = [];
+      let additionalInfo = [];
       
       if (userData.department) {
         additionalInfo.push(`Department: ${userData.department}`);
