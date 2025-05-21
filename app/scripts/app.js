@@ -463,10 +463,27 @@ function runDiagnostics() {
       },
       request: {
         get: function(url) {
-          console.log('Dev client: Making real API call to:', url);
+          // Ensure we use the full URL with the configured API URL
+          let apiUrl = url;
+          
+          // If the URL is a relative path, prepend the configured API URL
+          if (url.startsWith('/')) {
+            if (window.app && window.app.apiUrl) {
+              apiUrl = window.app.apiUrl + url;
+              console.log('Dev client: Making real API call to full URL:', apiUrl);
+            } else {
+              console.error('API URL not configured but trying to make API call');
+              return Promise.reject({
+                status: 400,
+                statusText: 'API URL not configured'
+              });
+            }
+          } else {
+            console.log('Dev client: Making real API call to provided URL:', apiUrl);
+          }
           
           // Check if URL is using example.freshservice.com
-          if (url.includes('example.freshservice.com')) {
+          if (apiUrl.includes('example.freshservice.com')) {
             const warningMsg = 'API call using example.freshservice.com detected. This will not work with real data.';
             console.error(warningMsg);
             console.error('Please configure your actual Freshservice URL in the app settings.');
@@ -513,7 +530,7 @@ function runDiagnostics() {
           const authToken = btoa(apiKey + ':X');
           
           // Make a real fetch call to the Freshservice API
-          return fetch(url, {
+          return fetch(apiUrl, {
             method: 'GET',
             headers: {
               'Authorization': 'Basic ' + authToken,
@@ -1766,17 +1783,20 @@ function runDiagnostics() {
       
       try {
         // Build the query with proper encoding
-        const queryString = `~[first_name|last_name]:'${query}'`;
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
         const encodedQuery = encodeURIComponent(queryString);
         const apiPath = `/api/v2/agents?query="${encodedQuery}"`;
-        console.log('Request URL:', app.apiUrl + apiPath);
+        
+        // Ensure we're using the full URL
+        const fullApiUrl = app.apiUrl + apiPath;
+        console.log('Request URL:', fullApiUrl);
         
         // Use client.request instead of fetch
         if (window.client && window.client.request) {
           // Create an object to track if the request has been aborted
           const abortInfo = { isAborted: false };
           
-          // Create the request promise
+          // Create the request promise - pass the full path or just the API path depending on how client.request works
           const requestPromise = window.client.request.get(apiPath, {
             headers: {
               'Content-Type': 'application/json',
@@ -1852,7 +1872,9 @@ function runDiagnostics() {
           const authToken = btoa(app.apiKey + ':X');
           console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
           
-          const apiUrl = `${app.apiUrl}${apiPath}`;
+          // Always use the full URL for direct fetch
+          const apiUrl = fullApiUrl;
+          console.log('Using direct fetch with URL:', apiUrl);
           
           // Create an AbortController to handle request cancellation
           const controller = new AbortController();
@@ -1959,14 +1981,18 @@ function runDiagnostics() {
         const queryString = `~[first_name|last_name|email]:'${query}'`;
         const encodedQuery = encodeURIComponent(queryString);
         const apiPath = `/api/v2/requesters?query="${encodedQuery}"`;
-        console.log('Request URL:', app.apiUrl + apiPath);
+        
+        // Ensure we're using the full URL
+        const fullApiUrl = app.apiUrl + apiPath;
+        console.log('Request URL:', fullApiUrl);
         
         // Use client.request instead of fetch
         if (window.client && window.client.request) {
           // Create an object to track if the request has been aborted
           const abortInfo = { isAborted: false };
           
-          // Create the request promise
+          // Create the request promise - pass the full path or just the API path depending on how client.request works
+          // Some implementations expect just the path, others need the full URL
           const requestPromise = window.client.request.get(apiPath, {
             headers: {
               'Content-Type': 'application/json',
@@ -2042,7 +2068,9 @@ function runDiagnostics() {
           const authToken = btoa(app.apiKey + ':X');
           console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
           
-          const apiUrl = `${app.apiUrl}${apiPath}`;
+          // Always use the full URL for direct fetch
+          const apiUrl = fullApiUrl;
+          console.log('Using direct fetch with URL:', apiUrl);
           
           // Create an AbortController to handle request cancellation
           const controller = new AbortController();
