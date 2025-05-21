@@ -53,11 +53,36 @@ powershell -Command "(Get-Content build\app\index.html) -replace '<!-- ES Module
 powershell -Command "(Get-Content build\app\index.html) -replace '<!-- Legacy non-module version for FDK compatibility -->\s*<script src=""scripts/app-legacy.js""></script>', '' | Set-Content build\app\index.html"
 powershell -Command "(Get-Content build\app\index.html) -replace '<!-- Fallback for browsers that don''t support ES modules -->\s*<script nomodule>[\s\S]*?</script>', '' | Set-Content build\app\index.html"
 
+REM Update manifest.json with app name and author info
+powershell -Command "$manifest = Get-Content build\manifest.json -Raw | ConvertFrom-Json; if (-not $manifest.app_name) { $manifest | Add-Member -Type NoteProperty -Name 'app_name' -Value 'Change Management Tool'; $manifest | Add-Member -Type NoteProperty -Name 'app_version' -Value '1.0.0'; $manifest | Add-Member -Type NoteProperty -Name 'author' -Value @{ name = 'Your Company'; email = 'support@example.com'; url = 'https://www.example.com' }; $manifest | ConvertTo-Json -Depth 10 | Set-Content build\manifest.json }"
+
 echo Build complete. Running FDK validation...
 cd build && fdk validate
+if %ERRORLEVEL% NEQ 0 (
+  cd ..
+  echo.
+  echo Validation failed! Please fix the issues before packing.
+  echo.
+  exit /b 1
+)
+
+echo.
+echo Validation successful. Packing the app...
+fdk pack -s
+if %ERRORLEVEL% NEQ 0 (
+  cd ..
+  echo.
+  echo Packing failed!
+  echo.
+  exit /b 1
+)
+
 cd ..
 
 echo.
-echo Note: Warnings about complexity and race conditions can be ignored unless they cause actual issues.
-echo If you need to fix these issues, update the actual source files in the app/ directory.
+echo Process completed successfully!
+echo App package is available at: build\dist\build.zip
+echo.
+echo Note: Warnings about complexity and race conditions can be ignored for development purposes.
+echo If submitting to the Freshworks Marketplace, you should fix these issues and add proper test coverage.
 echo. 
