@@ -1,19 +1,24 @@
 @echo off
-echo Cleaning up development environment...
+echo Cleaning up all development environments...
 
-REM First run restore to make sure we have our original files back
-call restore-dev.bat
+REM Remove development directory
+if exist dev (
+  echo Removing development directory...
+  rmdir /S /Q dev
+)
 
-REM Delete the backup directory
+REM Remove backup directory
 if exist backup (
-  echo Deleting backup directory...
+  echo Removing backup directory...
   rmdir /S /Q backup
 )
 
-REM Delete any temporary files that might be left
-if exist .fdkignore.bak del .fdkignore.bak
-if exist .fdkignore.tmp del .fdkignore.tmp
+REM Remove build directory
+if exist build (
+  echo Removing build directory...
+  rmdir /S /Q build
+)
 
 echo.
-echo Development environment cleaned up successfully.
+echo Development environments cleaned up successfully.
 echo. 

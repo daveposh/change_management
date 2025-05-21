@@ -225,22 +225,30 @@ This application provides a way to manage changes in Freshservice.
 
 The application uses ES modules for modern development but requires compatibility with Freshworks Developer Kit (FDK) which doesn't fully support ES modules. To handle this, we use separate environments for development and FDK validation/packaging.
 
+### Quick Start
+
+For local development:
+```
+dev-run.bat
+```
+
+For validation and packaging:
+```
+validate.bat
+```
+
+For cleaning up:
+```
+restore-dev.bat   # Removes only the development directory
+clean-dev.bat     # Removes all build directories (development, backup, build)
+```
+
 ### Scripts
 
 - **dev-run.bat**: Sets up a development environment in a separate `dev` directory that uses the non-module version of the app for local testing
-  ```
-  dev-run.bat
-  ```
-
 - **restore-dev.bat**: Cleans up the development environment
-  ```
-  restore-dev.bat
-  ```
-
+- **clean-dev.bat**: Complete cleanup of all development, backup, and build directories
 - **validate.bat**: Builds a FDK-compatible version of the app, validates it, and optionally packages it
-  ```
-  validate.bat
-  ```
 
 ### Common Issues
 
