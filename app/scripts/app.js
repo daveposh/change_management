@@ -1336,3 +1336,186 @@ function runDiagnostics() {
   
   // ... existing code ...
 })();
+
+// Perform search based on input
+function performSearch() {
+  console.log('Performing search...');
+  const searchInput = document.getElementById('searchInput');
+  
+  if (!searchInput) {
+    console.error('Search input element not found');
+    return;
+  }
+  
+  const searchTerm = searchInput.value.trim();
+  
+  if (!searchTerm) {
+    console.error('Please enter a search term');
+    return;
+  }
+  
+  // Show loading spinner
+  toggleSpinner(true);
+  
+  // Get active tab
+  const activeTab = document.querySelector('.nav-link.active');
+  if (!activeTab) {
+    console.error('No active tab found');
+    toggleSpinner(false);
+    return;
+  }
+  
+  const searchType = activeTab.id === 'users-tab' ? 'users' : 'requesters';
+  
+  // Clear previous results
+  const resultsContainer = document.getElementById(`${searchType}Results`);
+  if (resultsContainer) {
+    resultsContainer.innerHTML = '';
+  }
+  
+  // Perform search based on active tab
+  if (searchType === 'users') {
+    searchUsers(searchTerm)
+      .then(() => toggleSpinner(false))
+      .catch(error => {
+        console.error('Error during user search:', error);
+        toggleSpinner(false);
+      });
+  } else {
+    searchRequesters(searchTerm)
+      .then(() => toggleSpinner(false))
+      .catch(error => {
+        console.error('Error during requester search:', error);
+        toggleSpinner(false);
+      });
+  }
+}
+
+// Search for users via Freshservice API
+function searchUsers(query) {
+  console.log('Searching users with query:', query);
+  
+  return new Promise((resolve, reject) => {
+    // Check if API URL and key are available
+    if (!app.apiUrl || !app.apiKey) {
+      console.error('API configuration is missing. Please check app installation parameters.');
+      resolve([]);
+      return;
+    }
+    
+    // Make sure we have a client
+    if (!window.client || !window.client.request) {
+      console.error('Client request not available');
+      resolve([]);
+      return;
+    }
+    
+    const options = {
+      headers: {
+        'Authorization': 'Basic ' + btoa(app.apiKey + ':X'),
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    // Make the API request using client.request instead of fetch
+    client.request.get(`${app.apiUrl}/api/v2/agents?query="name:'${query}' OR email:'${query}'"`, options)
+      .then(response => {
+        if (response && response.response) {
+          const data = JSON.parse(response.response);
+          console.log('Agent search results:', data);
+          resolve(data.agents || []);
+        } else {
+          console.error('Invalid response format from API');
+          resolve([]);
+        }
+      })
+      .catch(error => {
+        console.error('Error searching users:', error);
+        reject(error);
+      });
+  });
+}
+
+// Search for requesters via Freshservice API
+function searchRequesters(query) {
+  console.log('Searching requesters with query:', query);
+  
+  return new Promise((resolve, reject) => {
+    // Check if API URL and key are available
+    if (!app.apiUrl || !app.apiKey) {
+      console.error('API configuration is missing. Please check app installation parameters.');
+      resolve([]);
+      return;
+    }
+    
+    // Make sure we have a client
+    if (!window.client || !window.client.request) {
+      console.error('Client request not available');
+      resolve([]);
+      return;
+    }
+    
+    const options = {
+      headers: {
+        'Authorization': 'Basic ' + btoa(app.apiKey + ':X'),
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    // Make the API request using client.request instead of fetch
+    client.request.get(`${app.apiUrl}/api/v2/requesters?query="name:'${query}' OR email:'${query}'"`, options)
+      .then(response => {
+        if (response && response.response) {
+          const data = JSON.parse(response.response);
+          console.log('Requester search results:', data);
+          resolve(data.requesters || []);
+        } else {
+          console.error('Invalid response format from API');
+          resolve([]);
+        }
+      })
+      .catch(error => {
+        console.error('Error searching requesters:', error);
+        reject(error);
+      });
+  });
+}
+
+// Function to integrate with change form
+function integrateWithChangeForm() {
+  console.log('Integrating with change form...');
+  
+  // If we're in a change form context, initialize the necessary components
+  const changeForm = document.getElementById('changeForm');
+  
+  if (changeForm) {
+    console.log('Change form found, setting up integration');
+    
+    // Make sure the app is accessible to change-form.js
+    window.app = window.app || {};
+    
+    // Ensure app functions are available even if the main init hasn't run yet
+    if (!window.app.searchUsers) {
+      window.app.searchUsers = searchUsers;
+    }
+    
+    if (!window.app.searchRequesters) {
+      window.app.searchRequesters = searchRequesters;
+    }
+    
+    // Add event listener for form submission
+    changeForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      console.log('Change form submitted, processing...');
+      
+      // Handle form submission logic
+      if (typeof submitChangeRequest === 'function') {
+        submitChangeRequest();
+      } else {
+        console.error('submitChangeRequest function not available');
+      }
+    });
+  } else {
+    console.log('Change form not found on this page');
+  }
+}
