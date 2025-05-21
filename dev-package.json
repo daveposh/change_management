@@ -1,8 +1,7 @@
 {
   "name": "freshservice-user-search",
   "version": "1.0.0",
-  "description": "Search for users and requesters in Freshservice",
-  "type": "module",
+  "description": "Search for users and requesters in Freshservice - Development Mode",
   "scripts": {
     "test": "jest --coverage",
     "validate": "validate.bat",
