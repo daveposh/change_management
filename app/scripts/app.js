@@ -5,6 +5,15 @@
  * using the Freshservice API v2
  */
 
+// Immediately hide spinner overlay to prevent loading state
+document.addEventListener('DOMContentLoaded', function() {
+  const spinner = document.getElementById('spinnerOverlay');
+  if (spinner) {
+    console.log('Forcibly hiding spinner overlay');
+    spinner.classList.add('d-none');
+  }
+});
+
 // Handle CSP errors
 window.addEventListener('securitypolicyviolation', function(e) {
   console.error('CSP violation:', e.blockedURI, 'violated directive:', e.violatedDirective);
@@ -32,43 +41,14 @@ function toggleSpinner(show) {
   const isDevMode = window.location.href.includes('dev=true');
   
   if (isLocalDev || isDevMode) {
-    console.log("Development environment detected - applying protocol fixes");
+    console.log("Development environment detected");
     
-    // Fix AJAX requests to convert https://localhost to http://localhost
-    const originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-      if (typeof url === 'string' && (url.startsWith('https://localhost') || url.includes('://localhost:'))) {
-        console.log('Converting HTTPS to HTTP for localhost URL:', url);
-        url = url.replace(/^(https?:\/\/)localhost/, 'http://localhost');
-      }
-      return originalFetch.call(this, url, options);
-    };
-    
-    // Fix XMLHttpRequest
-    const originalOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-      if (typeof url === 'string' && (url.startsWith('https://localhost') || url.includes('://localhost:'))) {
-        console.log('Converting HTTPS to HTTP for localhost URL in XHR:', url);
-        url = url.replace(/^(https?:\/\/)localhost/, 'http://localhost');
-      }
-      return originalOpen.call(this, method, url, async, user, password);
-    };
+    // HTTPS to HTTP conversion disabled
     
     // Fix for resource loading (images, scripts, etc.)
     if (document.addEventListener) {
       document.addEventListener('DOMContentLoaded', function() {
-        console.log('Adding fix for resource loading in development mode');
-        // Replace any HTTPS localhost URLs in link, script, and img tags
-        const elements = document.querySelectorAll('link, script, img');
-        elements.forEach(function(el) {
-          const src = el.src || el.href;
-          if (src && typeof src === 'string' && (src.startsWith('https://localhost') || src.includes('://localhost:'))) {
-            console.log('Converting resource URL from HTTPS to HTTP:', src);
-            const newSrc = src.replace(/^(https?:\/\/)localhost/, 'http://localhost');
-            if (el.src) el.src = newSrc;
-            if (el.href) el.href = newSrc;
-          }
-        });
+        console.log('Protocol conversion disabled by user request');
       });
     }
   }
