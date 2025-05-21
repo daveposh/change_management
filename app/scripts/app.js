@@ -2023,7 +2023,6 @@ function runDiagnostics() {
   // Search for requesters via Freshservice API
   function searchRequesters(query) {
     return new Promise((resolve, reject) => {
-      // Check if API URL and key are available
       if (!app.apiUrl || !app.apiKey) {
         console.error('API URL or API Key not configured');
         showError('API configuration missing. Please check your settings.');
@@ -2031,188 +2030,92 @@ function runDiagnostics() {
         return reject(new Error('API configuration missing'));
       }
       
+      console.log('Searching requesters with query:', query);
+      
       // Show loading spinner
       toggleSpinner(true);
       
       try {
-        // Fix query format - the Freshservice API may have specific format requirements
-        // For requesters, we'll try the same format as agents since both may work similarly
-        const queryString = `~[first_name|last_name|email]:'${query}'`;
-        const encodedQuery = encodeURIComponent(queryString);
-        const apiPath = `/api/v2/requesters?query="${encodedQuery}"`;
+        // For requesters, use a simple query parameter (not the complex syntax)
+        let apiPath;
         
-        // Ensure we're using the full URL
-        const fullApiUrl = app.apiUrl + apiPath;
-        console.log('Request URL:', fullApiUrl);
-        
-        // Use client.request instead of fetch
-        if (window.client && window.client.request) {
-          // Create an object to track if the request has been aborted
-          const abortInfo = { isAborted: false };
-          
-          // Create the request promise - pass the full path or just the API path depending on how client.request works
-          // Some implementations expect just the path, others need the full URL
-          const requestPromise = window.client.request.get(apiPath, {
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          })
-          .then(response => {
-            // Skip processing if the request was aborted
-            if (abortInfo.isAborted) {
-              console.log('Request was aborted');
-              return { requesters: [] };
-            }
-            
-            // Parse the response JSON
-            const data = JSON.parse(response.response);
-            return data;
-          })
-          .then(data => {
-            console.log('API response:', data);
-            
-            if (data && data.requesters && Array.isArray(data.requesters)) {
-              console.log(`Found ${data.requesters.length} requesters matching the query`);
-              app.renderResults('requesters', data.requesters);
-              resolve(data.requesters);
-            } else {
-              console.warn('Response contained no requesters array:', data);
-              // Check if data is in a different format
-              if (data && Array.isArray(data)) {
-                console.log('Data appears to be an array directly, using as requesters');
-                app.renderResults('requesters', data);
-                resolve(data);
-              } else {
-                app.renderResults('requesters', []);
-                resolve([]);
-              }
-            }
-          })
-          .catch(error => {
-            // Skip rendering if the request was aborted
-            if (abortInfo.isAborted) {
-              console.log('Request was aborted');
-              return resolve([]);
-            }
-            
-            console.error('API request failed:', error);
-            
-            let errorMessage = 'API request failed';
-            if (error.status) {
-              errorMessage += ` (Status: ${error.status})`;
-            }
-            if (error.message) {
-              errorMessage += `: ${error.message}`;
-            }
-            
-            showError(errorMessage);
-            app.renderResults('requesters', []);
-            resolve([]);
-          })
-          .finally(function() {
-            toggleSpinner(false);
-          });
-          
-          // Add an abort method to the promise
-          requestPromise.abort = () => {
-            abortInfo.isAborted = true;
-            // Note: client.request doesn't support aborting directly, 
-            // but we can prevent the handlers from processing the response
-          };
-          
-          return requestPromise;
+        if (query.includes('@')) {
+          // Email search
+          const encodedEmail = encodeURIComponent(query);
+          apiPath = `/api/v2/requesters?email=${encodedEmail}`;
         } else {
-          // Fallback to fetch if client.request is not available
-          const authToken = btoa(app.apiKey + ':X');
-          console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
-          
-          // Always use the full URL for direct fetch
-          const apiUrl = fullApiUrl;
-          console.log('Using direct fetch with URL:', apiUrl);
-          
-          // Create an AbortController to handle request cancellation
-          const controller = new AbortController();
-          const signal = controller.signal;
-          
-          // Attach the abort controller to the promise for external cancellation
-          const fetchPromise = fetch(apiUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': 'Basic ' + authToken,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            },
-            signal: signal
-          });
-          
-          // Add abort method to the promise
-          fetchPromise.abort = () => controller.abort();
-          
-          // Return the fetch promise
-          fetchPromise
-            .then(response => {
-              if (!response.ok) {
-                const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
-                error.status = response.status;
-                throw error;
-              }
-              return response.json();
-            })
-            .then(data => {
-              console.log('API response:', data);
-              
-              if (data && data.requesters && Array.isArray(data.requesters)) {
-                console.log(`Found ${data.requesters.length} requesters matching the query`);
-                app.renderResults('requesters', data.requesters);
-                resolve(data.requesters);
-              } else {
-                console.warn('Response contained no requesters array:', data);
-                // Check if data is in a different format
-                if (data && Array.isArray(data)) {
-                  console.log('Data appears to be an array directly, using as requesters');
-                  app.renderResults('requesters', data);
-                  resolve(data);
-                } else {
-                  app.renderResults('requesters', []);
-                  resolve([]);
-                }
-              }
-            })
-            .catch(error => {
-              // Skip rendering if the request was aborted
-              if (error.name === 'AbortError') {
-                console.log('Request was aborted');
-                return resolve([]);
-              }
-              
-              console.error('API request failed:', error);
-              
-              let errorMessage = 'API request failed';
-              if (error.status) {
-                errorMessage += ` (Status: ${error.status})`;
-              }
-              if (error.message) {
-                errorMessage += `: ${error.message}`;
-              }
-              
-              showError(errorMessage);
-              app.renderResults('requesters', []);
-              resolve([]);
-            })
-            .finally(function() {
-              toggleSpinner(false);
-            });
-          
-          // Return the fetch promise for external control
-          return fetchPromise;
+          // Name search - simple format
+          const encodedQuery = encodeURIComponent(query);
+          apiPath = `/api/v2/requesters?query=${encodedQuery}`;
         }
+        
+        // Full API URL for logging
+        const fullApiUrl = app.apiUrl + apiPath;
+        console.log('Requester search URL:', fullApiUrl);
+        
+        // Create auth token for direct fetch
+        const authToken = btoa(app.apiKey + ':X');
+        
+        // Make direct fetch request to ensure correct URL
+        fetch(fullApiUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Basic ' + authToken,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        })
+        .then(response => {
+          if (!response.ok) {
+            // Log error details
+            console.error(`Requester search error: ${response.status} ${response.statusText}`);
+            
+            // Try to get more error details
+            response.text().then(text => {
+              try {
+                const errorData = JSON.parse(text);
+                console.error('Error details:', errorData);
+              } catch(e) {
+                console.error('Error response (not JSON):', text);
+              }
+            }).catch(e => {/* ignore read errors */});
+            
+            throw new Error(`API returned ${response.status}: ${response.statusText}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('Requester search response:', data);
+          
+          // Process results
+          let requesters = [];
+          if (data && data.requesters && Array.isArray(data.requesters)) {
+            requesters = data.requesters;
+            console.log(`Found ${requesters.length} requesters matching '${query}'`);
+          } else if (data && Array.isArray(data)) {
+            requesters = data;
+            console.log(`Found ${requesters.length} requesters (array format) matching '${query}'`);
+          }
+          
+          // Render to UI
+          app.renderResults('requesters', requesters);
+          resolve(requesters);
+        })
+        .catch(error => {
+          console.error('Requester search failed:', error);
+          showError(`Error searching requesters: ${error.message}`);
+          app.renderResults('requesters', []);
+          resolve([]);
+        })
+        .finally(() => {
+          toggleSpinner(false);
+        });
       } catch (error) {
-        console.error('Error in search:', error);
-        showError(`Error making API request: ${error.message}`);
+        console.error('Error in requester search:', error);
+        showError(`Error in requester search: ${error.message}`);
         app.renderResults('requesters', []);
         toggleSpinner(false);
-        return reject(error);
+        resolve([]);
       }
     });
   }
