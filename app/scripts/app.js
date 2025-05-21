@@ -617,48 +617,7 @@ function runDiagnostics() {
     };
   }
   
-  // Initialize by directly accessing the Freshworks Client factory
-  function initializeApp() {
-    console.log('Initializing Change Management app');
-    
-    // Show the loading indicator - but with timeout protection
-    toggleSpinner(true);
-    setTimeout(() => toggleSpinner(false), 5000); // Force hide after 5 seconds
-    
-    // Create a safety net if client is not defined yet
-    if (typeof client === 'undefined') {
-      console.warn('Client object not available, creating fallback client');
-      window.client = createDevClient();
-    }
-    
-    // Attempt to get client from the Freshworks SDK
-    try {
-      // Set a timeout to proceed anyway if the initialization takes too long
-      const initTimeout = setTimeout(() => {
-        console.warn('Client initialization taking too long, proceeding with fallback');
-        initializeFallback();
-      }, 3000);
-      
-      client.initialized()
-        .then(function() {
-          clearTimeout(initTimeout);
-          console.log('Freshworks Client initialized');
-          onClientReady(client);
-        })
-        .catch(function(error) {
-          clearTimeout(initTimeout);
-          console.error('Failed to initialize Freshworks client:', error);
-          // Fall back to direct initialization without the client
-          initializeFallback();
-        });
-    } catch (error) {
-      console.error('Error initializing client:', error);
-      initializeFallback();
-    }
-      
-    // Set up integration with change form
-    integrateWithChangeForm();
-  }
+    // Initialize by directly accessing the Freshworks Client factory  function initializeApp() {    console.log('Initializing Change Management app');        // Show the loading indicator - but with timeout protection    toggleSpinner(true);    setTimeout(() => toggleSpinner(false), 5000); // Force hide after 5 seconds        // Create a safety net if client is not defined yet    if (typeof client === 'undefined') {      console.warn('Client object not available, creating fallback client');      window.client = createDevClient();    }        // Make sure updateAppTitle is available on the app object    window.app = window.app || {};    window.app.updateAppTitle = updateAppTitle;        // Attempt to get client from the Freshworks SDK    try {      // Set a timeout to proceed anyway if the initialization takes too long      const initTimeout = setTimeout(() => {        console.warn('Client initialization taking too long, proceeding with fallback');        initializeFallback();      }, 3000);            client.initialized()        .then(function() {          clearTimeout(initTimeout);          console.log('Freshworks Client initialized');          onClientReady(client);        })        .catch(function(error) {          clearTimeout(initTimeout);          console.error('Failed to initialize Freshworks client:', error);          // Fall back to direct initialization without the client          initializeFallback();        });    } catch (error) {      console.error('Error initializing client:', error);      initializeFallback();    }          // Set up integration with change form    integrateWithChangeForm();  }
   
   // Fallback initialization - try Freshworks App SDK methods
   function initializeFallback() {
@@ -954,17 +913,7 @@ function runDiagnostics() {
         groups: `${app.apiUrl}/api/v2/groups`
       };
       
-      console.log('API endpoints configured from URL parameters:', app.endpoints);
-      
-      // Save working config to storage for persistence
-      saveConfigToStorage(client, {
-        apiUrl: app.apiUrl,
-        apiKey: app.apiKey,
-        appTitle: app.appTitle,
-        changeTypes: app.changeTypes
-      });
-      
-      updateAppTitle(app.appTitle);
+                console.log('API endpoints configured from URL parameters:', app.endpoints);                    // Save working config to storage for persistence          saveConfigToStorage(client, {            apiUrl: app.apiUrl,            apiKey: app.apiKey,            appTitle: app.appTitle,            changeTypes: app.changeTypes          });                    app.updateAppTitle(app.appTitle);
       return;
     }
     
@@ -1009,17 +958,7 @@ function runDiagnostics() {
             groups: `${app.apiUrl}/api/v2/groups`
           };
           
-          console.log('API endpoints configured from iparams:', app.endpoints);
-            
-          // Save working config to storage for persistence
-          saveConfigToStorage(client, {
-            apiUrl: app.apiUrl,
-            apiKey: app.apiKey,
-            appTitle: app.appTitle,
-            changeTypes: app.changeTypes
-          });
-          
-          updateAppTitle(app.appTitle);
+                    console.log('API endpoints configured from iparams:', app.endpoints);                      // Save working config to storage for persistence          saveConfigToStorage(client, {            apiUrl: app.apiUrl,            apiKey: app.apiKey,            appTitle: app.appTitle,            changeTypes: app.changeTypes          });                    app.updateAppTitle(app.appTitle);
           return true;
         }
         return false;
@@ -1064,8 +1003,7 @@ function runDiagnostics() {
               groups: `${app.apiUrl}/api/v2/groups`
             };
             
-            console.log('API endpoints configured from storage:', app.endpoints);
-            updateAppTitle(app.appTitle);
+                        console.log('API endpoints configured from storage:', app.endpoints);            app.updateAppTitle(app.appTitle);
             return true;
           }
           return false;
@@ -1109,17 +1047,7 @@ function runDiagnostics() {
               groups: `${app.apiUrl}/api/v2/groups`
             };
             
-            console.log('API endpoints configured from localStorage:', app.endpoints);
-            
-            // Migrate to client.db
-            saveConfigToStorage(client, {
-              apiUrl: app.apiUrl,
-              apiKey: app.apiKey,
-              appTitle: app.appTitle,
-              changeTypes: app.changeTypes
-            });
-            
-            updateAppTitle(app.appTitle);
+                        console.log('API endpoints configured from localStorage:', app.endpoints);                        // Migrate to client.db            saveConfigToStorage(client, {              apiUrl: app.apiUrl,              apiKey: app.apiKey,              appTitle: app.appTitle,              changeTypes: app.changeTypes            });                        app.updateAppTitle(app.appTitle);
             return true;
           }
         }
@@ -1147,224 +1075,7 @@ function runDiagnostics() {
       })
       .then(found => {
         if (!found) {
-          // Don't use example domain as default anymore
-          console.warn('No valid configuration found, prompting for configuration');
-          app.apiUrl = ''; // Empty string instead of example domain
-          app.apiKey = '';
-          app.appTitle = 'Change Management';
-          app.changeTypes = [
-            "Standard Change", 
-            "Emergency Change", 
-            "Non-Standard Change"
-          ];
-          
-          // Show a more prominent configuration prompt
-          const configPrompt = `
-            <div class="alert alert-warning mt-2 mb-2">
-              <h4>Configuration Required</h4>
-              <p>Please configure your Freshservice domain and API key using one of the following methods:</p>
-              <ol>
-                <li>Add URL parameters: <code>?api_url=yourdomain.freshservice.com&api_key=your_api_key</code></li>
-                <li>Install the app properly through Freshservice Admin interface</li>
-              </ol>
-              <div class="input-group mt-3">
-                <div class="input-group-prepend">
-                  <span class="input-group-text">Domain</span>
-                </div>
-                <input type="text" id="configApiUrl" class="form-control" placeholder="yourdomain.freshservice.com">
-              </div>
-              <div class="input-group mt-2">
-                <div class="input-group-prepend">
-                  <span class="input-group-text">API Key</span>
-                </div>
-                <input type="text" id="configApiKey" class="form-control" placeholder="Your Freshservice API key">
-              </div>
-              <div class="mt-2">
-                <button id="saveConfigBtn" class="btn btn-primary">Save Configuration</button>
-                <button id="testConnectionBtn" class="btn btn-outline-info ml-2">Test Connection</button>
-              </div>
-            </div>
-          `;
-          
-          // Add to page
-          const container = document.querySelector('.container');
-          if (container) {
-            // Create element for the prompt
-            const promptElement = document.createElement('div');
-            promptElement.innerHTML = configPrompt;
-            container.insertBefore(promptElement, container.firstChild);
-            
-                          // Add event listeners to the buttons
-              setTimeout(() => {
-                // Add test connection button handler
-                const testConnectionBtn = document.getElementById('testConnectionBtn');
-                if (testConnectionBtn) {
-                  testConnectionBtn.addEventListener('click', function() {
-                    const apiUrlInput = document.getElementById('configApiUrl');
-                    const apiKeyInput = document.getElementById('configApiKey');
-                    
-                    if (apiUrlInput && apiKeyInput) {
-                      const apiUrl = apiUrlInput.value.trim();
-                      const apiKey = apiKeyInput.value.trim();
-                      
-                      if (apiUrl && apiKey) {
-                        // Show testing status
-                        testConnectionBtn.disabled = true;
-                        testConnectionBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Testing...';
-                        
-                        // Process API URL to ensure it has proper format
-                        let fullApiUrl = apiUrl;
-                        if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
-                          fullApiUrl = 'https://' + fullApiUrl;
-                        }
-                        
-                        // Temporarily set the app configuration
-                        const origApiUrl = app.apiUrl;
-                        const origApiKey = app.apiKey;
-                        
-                        app.apiUrl = fullApiUrl;
-                        app.apiKey = apiKey;
-                        
-                        // Test the connection
-                        testApiCredentials()
-                          .then(data => {
-                            // Success - show confirmation
-                            const successMsg = document.createElement('div');
-                            successMsg.className = 'alert alert-success mt-2';
-                            
-                            if (data && data.agents && data.agents.length > 0) {
-                              const agentName = `${data.agents[0].first_name} ${data.agents[0].last_name}`;
-                              successMsg.innerHTML = `Connection successful! Found agent: ${agentName}`;
-                            } else {
-                              successMsg.innerHTML = 'Connection successful! API credentials are valid.';
-                            }
-                            
-                            // Remove any existing messages
-                            const existingMessages = container.querySelectorAll('.alert');
-                            existingMessages.forEach(el => {
-                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
-                                el.remove();
-                              }
-                            });
-                            
-                            container.insertBefore(successMsg, promptElement.nextSibling);
-                          })
-                          .catch(error => {
-                            // Error - show warning
-                            const errorMsg = document.createElement('div');
-                            errorMsg.className = 'alert alert-danger mt-2';
-                            errorMsg.innerHTML = `Connection failed: ${error.message}`;
-                            
-                            // Remove any existing messages
-                            const existingMessages = container.querySelectorAll('.alert');
-                            existingMessages.forEach(el => {
-                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
-                                el.remove();
-                              }
-                            });
-                            
-                            container.insertBefore(errorMsg, promptElement.nextSibling);
-                          })
-                          .finally(() => {
-                            // Reset the app configuration
-                            app.apiUrl = origApiUrl;
-                            app.apiKey = origApiKey;
-                            
-                            // Reset button
-                            testConnectionBtn.disabled = false;
-                            testConnectionBtn.innerHTML = 'Test Connection';
-                          });
-                      } else {
-                        // Show error for missing fields
-                        const errorMsg = document.createElement('div');
-                        errorMsg.className = 'alert alert-danger mt-2';
-                        errorMsg.innerHTML = 'Please enter both domain and API key to test connection';
-                        
-                        // Remove any existing error messages
-                        const existingErrors = container.querySelectorAll('.alert-danger');
-                        existingErrors.forEach(el => {
-                          if (el.textContent.includes('Please enter both')) {
-                            el.remove();
-                          }
-                        });
-                        
-                        container.insertBefore(errorMsg, promptElement.nextSibling);
-                      }
-                    }
-                  });
-                }
-                
-                // Add save button handler
-                const saveBtn = document.getElementById('saveConfigBtn');
-                if (saveBtn) {
-                  saveBtn.addEventListener('click', function() {
-                    const apiUrlInput = document.getElementById('configApiUrl');
-                    const apiKeyInput = document.getElementById('configApiKey');
-                  
-                  if (apiUrlInput && apiKeyInput) {
-                    const apiUrl = apiUrlInput.value.trim();
-                    const apiKey = apiKeyInput.value.trim();
-                    
-                    if (apiUrl && apiKey) {
-                      // Process API URL to ensure it has proper format
-                      let fullApiUrl = apiUrl;
-                      if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
-                        fullApiUrl = 'https://' + fullApiUrl;
-                      }
-                      
-                      // Update app configuration
-                      app.apiUrl = fullApiUrl;
-                      app.apiKey = apiKey;
-                      
-                      // Set up API endpoints
-                      app.endpoints = {
-                        users: `${app.apiUrl}/api/v2/agents`,
-                        requesters: `${app.apiUrl}/api/v2/requesters`,
-                        groups: `${app.apiUrl}/api/v2/groups`
-                      };
-                      
-                      // Save to storage
-                      saveConfigToStorage(client, {
-                        apiUrl: app.apiUrl,
-                        apiKey: app.apiKey,
-                        appTitle: app.appTitle,
-                        changeTypes: app.changeTypes
-                      });
-                      
-                      // Show success message
-                      const successMsg = document.createElement('div');
-                      successMsg.className = 'alert alert-success';
-                      successMsg.innerHTML = 'Configuration saved successfully. Reloading...';
-                      container.insertBefore(successMsg, container.firstChild);
-                      
-                      // Reload the page after a short delay
-                      setTimeout(function() {
-                        location.reload();
-                      }, 1500);
-                    } else {
-                      // Show error for missing fields
-                      const errorMsg = document.createElement('div');
-                      errorMsg.className = 'alert alert-danger mt-2';
-                      errorMsg.innerHTML = 'Please enter both domain and API key';
-                      
-                      // Remove any existing error messages
-                      const existingErrors = container.querySelectorAll('.alert-danger');
-                      existingErrors.forEach(el => {
-                        if (el.textContent.includes('Please enter both')) {
-                          el.remove();
-                        }
-                      });
-                      
-                      // Add the new error message
-                      container.insertBefore(errorMsg, promptElement.nextSibling);
-                    }
-                  }
-                });
-              }
-            }, 500);
-          }
-          
-          updateAppTitle(app.appTitle);
+                    // Don't use example domain as default anymore          console.warn('No valid configuration found, prompting for configuration');          app.apiUrl = ''; // Empty string instead of example domain          app.apiKey = '';          app.appTitle = 'Change Management';          app.changeTypes = [            "Standard Change",             "Emergency Change",             "Non-Standard Change"          ];                    // Show a more prominent configuration prompt          const configPrompt = `            <div class="alert alert-warning mt-2 mb-2">              <h4>Configuration Required</h4>              <p>Please configure your Freshservice domain and API key using one of the following methods:</p>              <ol>                <li>Add URL parameters: <code>?api_url=yourdomain.freshservice.com&api_key=your_api_key</code></li>                <li>Install the app properly through Freshservice Admin interface</li>              </ol>              <div class="input-group mt-3">                <div class="input-group-prepend">                  <span class="input-group-text">Domain</span>                </div>                <input type="text" id="configApiUrl" class="form-control" placeholder="yourdomain.freshservice.com">              </div>              <div class="input-group mt-2">                <div class="input-group-prepend">                  <span class="input-group-text">API Key</span>                </div>                <input type="text" id="configApiKey" class="form-control" placeholder="Your Freshservice API key">              </div>              <div class="mt-2">                <button id="saveConfigBtn" class="btn btn-primary">Save Configuration</button>                <button id="testConnectionBtn" class="btn btn-outline-info ml-2">Test Connection</button>              </div>            </div>          `;                    // Add to page          const container = document.querySelector('.container');          if (container) {            // Create element for the prompt            const promptElement = document.createElement('div');            promptElement.innerHTML = configPrompt;            container.insertBefore(promptElement, container.firstChild);                                      // Add event listeners to the buttons              setTimeout(() => {                // Add test connection button handler                const testConnectionBtn = document.getElementById('testConnectionBtn');                if (testConnectionBtn) {                  testConnectionBtn.addEventListener('click', function() {                    const apiUrlInput = document.getElementById('configApiUrl');                    const apiKeyInput = document.getElementById('configApiKey');                                        if (apiUrlInput && apiKeyInput) {                      const apiUrl = apiUrlInput.value.trim();                      const apiKey = apiKeyInput.value.trim();                                            if (apiUrl && apiKey) {                        // Show testing status                        testConnectionBtn.disabled = true;                        testConnectionBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Testing...';                                                // Process API URL to ensure it has proper format                        let fullApiUrl = apiUrl;                        if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {                          fullApiUrl = 'https://' + fullApiUrl;                        }                                                // Temporarily set the app configuration                        const origApiUrl = app.apiUrl;                        const origApiKey = app.apiKey;                                                app.apiUrl = fullApiUrl;                        app.apiKey = apiKey;                                                // Test the connection                        testApiCredentials()                          .then(data => {                            // Success - show confirmation                            const successMsg = document.createElement('div');                            successMsg.className = 'alert alert-success mt-2';                                                        if (data && data.agents && data.agents.length > 0) {                              const agentName = `${data.agents[0].first_name} ${data.agents[0].last_name}`;                              successMsg.innerHTML = `Connection successful! Found agent: ${agentName}`;                            } else {                              successMsg.innerHTML = 'Connection successful! API credentials are valid.';                            }                                                        // Remove any existing messages                            const existingMessages = container.querySelectorAll('.alert');                            existingMessages.forEach(el => {                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {                                el.remove();                              }                            });                                                        container.insertBefore(successMsg, promptElement.nextSibling);                          })                          .catch(error => {                            // Error - show warning                            const errorMsg = document.createElement('div');                            errorMsg.className = 'alert alert-danger mt-2';                            errorMsg.innerHTML = `Connection failed: ${error.message}`;                                                        // Remove any existing messages                            const existingMessages = container.querySelectorAll('.alert');                            existingMessages.forEach(el => {                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {                                el.remove();                              }                            });                                                        container.insertBefore(errorMsg, promptElement.nextSibling);                          })                          .finally(() => {                            // Reset the app configuration                            app.apiUrl = origApiUrl;                            app.apiKey = origApiKey;                                                        // Reset button                            testConnectionBtn.disabled = false;                            testConnectionBtn.innerHTML = 'Test Connection';                          });                      } else {                        // Show error for missing fields                        const errorMsg = document.createElement('div');                        errorMsg.className = 'alert alert-danger mt-2';                        errorMsg.innerHTML = 'Please enter both domain and API key to test connection';                                                // Remove any existing error messages                        const existingErrors = container.querySelectorAll('.alert-danger');                        existingErrors.forEach(el => {                          if (el.textContent.includes('Please enter both')) {                            el.remove();                          }                        });                                                container.insertBefore(errorMsg, promptElement.nextSibling);                      }                    }                  });                }                                // Add save button handler                const saveBtn = document.getElementById('saveConfigBtn');                if (saveBtn) {                  saveBtn.addEventListener('click', function() {                    const apiUrlInput = document.getElementById('configApiUrl');                    const apiKeyInput = document.getElementById('configApiKey');                                    if (apiUrlInput && apiKeyInput) {                    const apiUrl = apiUrlInput.value.trim();                    const apiKey = apiKeyInput.value.trim();                                        if (apiUrl && apiKey) {                      // Process API URL to ensure it has proper format                      let fullApiUrl = apiUrl;                      if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {                        fullApiUrl = 'https://' + fullApiUrl;                      }                                            // Update app configuration                      app.apiUrl = fullApiUrl;                      app.apiKey = apiKey;                                            // Set up API endpoints                      app.endpoints = {                        users: `${app.apiUrl}/api/v2/agents`,                        requesters: `${app.apiUrl}/api/v2/requesters`,                        groups: `${app.apiUrl}/api/v2/groups`                      };                                            // Save to storage                      saveConfigToStorage(client, {                        apiUrl: app.apiUrl,                        apiKey: app.apiKey,                        appTitle: app.appTitle,                        changeTypes: app.changeTypes                      });                                            // Show success message                      const successMsg = document.createElement('div');                      successMsg.className = 'alert alert-success';                      successMsg.innerHTML = 'Configuration saved successfully. Reloading...';                      container.insertBefore(successMsg, container.firstChild);                                            // Reload the page after a short delay                      setTimeout(function() {                        location.reload();                      }, 1500);                    } else {                      // Show error for missing fields                      const errorMsg = document.createElement('div');                      errorMsg.className = 'alert alert-danger mt-2';                      errorMsg.innerHTML = 'Please enter both domain and API key';                                            // Remove any existing error messages                      const existingErrors = container.querySelectorAll('.alert-danger');                      existingErrors.forEach(el => {                        if (el.textContent.includes('Please enter both')) {                          el.remove();                        }                      });                                            // Add the new error message                      container.insertBefore(errorMsg, promptElement.nextSibling);                    }                  }                });              }            }, 500);          }                    app.updateAppTitle(app.appTitle);
         }
       });
   }
@@ -2178,5 +1889,5 @@ function runDiagnostics() {
       .then(data => {
         resolve(data);
       })
-      .catch(error => {              console.error('API test failed:', error);              reject(error);            });          });        }                // Update the application title displayed on the page        function updateAppTitle(title) {          const titleElement = document.getElementById('appTitle');          if (titleElement) {            // Make sure we don't use null/undefined title, use configured default or fallback            const displayTitle = title || app.appTitle || 'Change Management';            titleElement.textContent = displayTitle;            console.log('Application title updated to:', displayTitle);          } else {            console.error('Title element not found in the DOM');          }        }                // Show error message in the UI        function showError(message, error) {          console.error("Error:", message, error || '');                    // Hide spinner if visible          toggleSpinner(false);                    // Try to use the notification system from change-form.js if available          if (typeof showNotification === 'function') {            return showNotification(message, 'danger');          }                    // Fallback to creating our own error message          const container = document.querySelector('.container');          if (!container) return;                    const errorElement = document.createElement('div');          errorElement.className = 'alert alert-danger alert-dismissible fade show';          errorElement.setAttribute('role', 'alert');          errorElement.innerHTML = `            ${message}            <button type="button" class="close" data-dismiss="alert" aria-label="Close">              <span aria-hidden="true">&times;</span>            </button>          `;                    // Add to page          container.insertBefore(errorElement, container.firstChild);                    // Auto-dismiss after 8 seconds          setTimeout(() => {            if (errorElement.parentNode) {              errorElement.classList.remove('show');              setTimeout(() => {                if (errorElement.parentNode) {                  errorElement.parentNode.removeChild(errorElement);                }              }, 150);            }          }, 8000);        }
+      .catch(error => {              console.error('API test failed:', error);              reject(error);            });          });        }                // Update the application title displayed on the page        function updateAppTitle(title) {          const titleElement = document.getElementById('appTitle');          if (titleElement) {            // Make sure we don't use null/undefined title, use configured default or fallback            const displayTitle = title || app.appTitle || 'Change Management';            titleElement.textContent = displayTitle;            console.log('Application title updated to:', displayTitle);          } else {            console.error('Title element not found in the DOM');          }        }                // Make updateAppTitle available globally        window.updateAppTitle = updateAppTitle;                // Show error message in the UI        function showError(message, error) {          console.error("Error:", message, error || '');                    // Hide spinner if visible          toggleSpinner(false);                    // Try to use the notification system from change-form.js if available          if (typeof showNotification === 'function') {            return showNotification(message, 'danger');          }                    // Fallback to creating our own error message          const container = document.querySelector('.container');          if (!container) return;                    const errorElement = document.createElement('div');          errorElement.className = 'alert alert-danger alert-dismissible fade show';          errorElement.setAttribute('role', 'alert');          errorElement.innerHTML = `            ${message}            <button type="button" class="close" data-dismiss="alert" aria-label="Close">              <span aria-hidden="true">&times;</span>            </button>          `;                    // Add to page          container.insertBefore(errorElement, container.firstChild);                    // Auto-dismiss after 8 seconds          setTimeout(() => {            if (errorElement.parentNode) {              errorElement.classList.remove('show');              setTimeout(() => {                if (errorElement.parentNode) {                  errorElement.parentNode.removeChild(errorElement);                }              }, 150);            }          }, 8000);        }
 })();
