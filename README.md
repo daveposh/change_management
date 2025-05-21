@@ -189,30 +189,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-```
-MIT License
-
-Copyright (c) 2023 [Your Name or Company]
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
 ## Acknowledgments
 
 - [Bootstrap](https://getbootstrap.com/) - Used for UI components
@@ -243,59 +219,53 @@ For detailed information about any remaining issues, run `fdk validate` to see t
 
 # Freshservice Change Management App
 
-A modular application for Freshservice that improves change management workflow and user searching capabilities.
+This application provides a way to manage changes in Freshservice.
 
-## Development Architecture
+## Development Setup
 
-This project uses a modern ES modules architecture with the following components:
+The application uses ES modules for modern development but requires compatibility with Freshworks Developer Kit (FDK) which doesn't fully support ES modules. To handle this, we use separate environments for development and FDK validation/packaging.
 
-- `app/scripts/modules/` - Contains modular JavaScript classes
-- `app/scripts/app.js` - Main entry point (ES modules version)
-- `app/scripts/app-legacy.js` - Non-module version for FDK validation
+### Scripts
 
-## FDK Validation and Packaging
+- **dev-run.bat**: Sets up a development environment in a separate `dev` directory that uses the non-module version of the app for local testing
+  ```
+  dev-run.bat
+  ```
 
-### Handling ES Modules in FDK
+- **restore-dev.bat**: Cleans up the development environment
+  ```
+  restore-dev.bat
+  ```
 
-The Freshworks Developer Kit (FDK) has limitations with ES modules. To work around this:
+- **validate.bat**: Builds a FDK-compatible version of the app, validates it, and optionally packages it
+  ```
+  validate.bat
+  ```
 
-1. We maintain modern ES module code in the main codebase
-2. A separate validation-friendly build is created for FDK validation and packaging
-3. The `validate.bat` script automates this process
+### Common Issues
 
-### Validation Process
+1. **Module Loading Errors**: If you see errors about modules not loading correctly, make sure you're using the `dev-run.bat` script for development.
 
-To validate and package the app:
+2. **Search Functionality Not Available**: This may indicate the app didn't initialize properly. Use `dev-run.bat` to use the development version with mock search functionality.
 
-```
-npm run validate   # Run validation only
-npm run pack       # Run validation and create distributable package
-```
+3. **FDK Validation Errors**: These are caught by `validate.bat` and typically relate to FDK's requirements for app structure and compatibility.
 
-The `validate.bat` script:
-1. Creates a build directory with non-module versions of files
-2. Fixes HTML to use traditional script loading
-3. Creates required FDK files (config/iparams.json, icon.svg)
-4. Runs FDK validation
-5. Packages the app, skipping code coverage requirements
+## Architecture
 
-### Warnings and Test Coverage
+The app uses two main architectural approaches:
 
-The FDK validation shows warnings related to code complexity and potential race conditions. For production deployment to the Freshworks Marketplace, you should:
+1. **Modern Development** (ES modules): Used for actual development with proper module separation
+2. **FDK Compatibility Mode** (non-modules): Used for FDK validation, packaging, and local testing
 
-1. Address all warnings in the main codebase
-2. Create proper tests to achieve 80%+ code coverage
-3. Use `fdk pack` without the `-s` flag to validate test coverage
+Key files:
+- `app/scripts/app.js`: ES module version for modern browsers
+- `app/scripts/app-legacy.js`: Non-module version for FDK compatibility
+- `app/scripts/app-dev.js`: Development version with mock data
 
-## Deployment
+## Building and Packaging
 
-For production deployment:
+To build and package the app for deployment:
 
-1. Run `npm run pack` to create the package
-2. The app package will be available as `build.zip` in the root directory
-3. Upload this file to the Freshworks Marketplace
-
-## Known Issues
-
-- Test coverage is currently below the 80% requirement for Marketplace submission
-- There are complexity warnings that should be addressed for production code
+1. Run `validate.bat`
+2. If validation is successful, choose 'Y' when prompted to package
+3. The packaged app will be available at `build/dist/build.zip`

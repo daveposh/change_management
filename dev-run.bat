@@ -1,61 +1,27 @@
 @echo off
-echo Creating development environment for FDK run...
+echo Setting up development environment...
 
-REM Create backup directory outside the app directory
-if not exist backup mkdir backup
-if not exist backup\scripts mkdir backup\scripts
-if not exist backup\modules mkdir backup\modules
+REM Create development directory
+if not exist dev mkdir dev
+if not exist dev\app\scripts mkdir dev\app\scripts
+if not exist dev\app\styles mkdir dev\app\styles
 
-REM Backup package.json
-if exist package.json (
-  copy package.json backup\package.json.bak
-  copy dev-package.json package.json
-  echo Switched to development package.json (without "type": "module")
-)
+REM Copy main files
+copy app\index.html dev\app\
+copy app\styles\*.* dev\app\styles\
+copy app\scripts\api-utils.js dev\app\scripts\
+copy app\scripts\change-form.js dev\app\scripts\
 
-REM Backup all module files
-if exist app\scripts\app.js (
-  copy app\scripts\app.js backup\scripts\app.js.bak
-)
-if exist app\scripts\index.js (
-  copy app\scripts\index.js backup\scripts\index.js.bak
-)
-if exist app\scripts\test-search.js (
-  copy app\scripts\test-search.js backup\scripts\test-search.js.bak
-)
+REM Copy the development app.js
+echo Copying development version of app.js...
+copy app\scripts\app-dev.js dev\app\scripts\app.js
 
-REM Backup module folder - move it completely outside app directory
-if exist app\scripts\modules (
-  xcopy /E /I /Y app\scripts\modules backup\modules
-  REM Remove the original modules directory
-  rmdir /S /Q app\scripts\modules
-)
+REM Fix HTML file for development
+powershell -Command "(Get-Content dev\app\index.html) -replace '<!-- ES Module versions for modern browsers -->\s*<script type=""module"" src=""scripts/app.js""></script>', '<!-- Development application script -->\n    <script src=""scripts/app.js""></script>' | Set-Content dev\app\index.html"
+powershell -Command "(Get-Content dev\app\index.html) -replace '<!-- Legacy non-module version for FDK compatibility -->\s*<script src=""scripts/app-legacy.js""></script>', '' | Set-Content dev\app\index.html"
+powershell -Command "(Get-Content dev\app\index.html) -replace '<!-- Fallback for browsers that don''t support ES modules -->\s*<script nomodule>[\s\S]*?</script>', '' | Set-Content dev\app\index.html"
 
-REM Create non-module temporary files
-echo console.log('Legacy mode for development - index.js'); > app\scripts\index.js
-echo console.log('Legacy mode for development - test-search.js'); > app\scripts\test-search.js
+echo Development environment setup complete.
+echo Running FDK in development mode...
 
-REM Create empty module directory with placeholder files
-mkdir app\scripts\modules
-echo // Placeholder for api-client.js > app\scripts\modules\api-client.js
-echo // Placeholder for config-manager.js > app\scripts\modules\config-manager.js
-echo // Placeholder for ui-manager.js > app\scripts\modules\ui-manager.js
-echo // Placeholder for user-search.js > app\scripts\modules\user-search.js
-
-REM Copy the full implementation development version to app.js
-copy app\scripts\app-dev.js app\scripts\app.js
-echo console.log('Development mode enabled with mock data'); >> app\scripts\app.js
-
-REM Update index.html for development
-powershell -Command "$content = Get-Content app\index.html -Raw; $content = $content -replace '<script type=""module"" src=""scripts/app.js""></script>', '<script src=""scripts/app.js""></script>'; Set-Content app\index.html $content"
-
-echo Development environment ready!
-echo Starting FDK development server...
-echo.
-echo IMPORTANT: Type 'npm run restore' after you're done to restore your ES module files!
-echo.
-
-fdk run
-
-REM This part won't execute until fdk run is stopped with Ctrl+C
-echo Development session ended. Remember to run 'npm run restore' to restore your ES module files. 
+cd dev && fdk run 

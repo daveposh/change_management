@@ -55,4 +55,18 @@ set /p delete_backups="Delete backup files? (y/n): "
 if /i "%delete_backups%" == "y" (
   rmdir /S /Q backup
   echo Backup files deleted.
-) 
+)
+
+@echo off
+echo Cleaning up development environment...
+
+REM Stop if dev directory doesn't exist
+if not exist dev (
+  echo No development environment found.
+  exit /b 0
+)
+
+REM Remove development directory
+rmdir /S /Q dev
+
+echo Development environment cleaned up successfully. 

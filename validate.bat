@@ -67,14 +67,17 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo Validation successful. Packing the app...
-fdk pack -s
-if %ERRORLEVEL% NEQ 0 (
-  cd ..
-  echo.
-  echo Packing failed!
-  echo.
-  exit /b 1
+echo Validation successful. Do you want to pack the app now? (Y/N)
+set /p pack_choice=
+if /i "%pack_choice%"=="Y" (
+  fdk pack -s
+  if %ERRORLEVEL% NEQ 0 (
+    cd ..
+    echo.
+    echo Packing failed!
+    echo.
+    exit /b 1
+  )
 )
 
 cd ..
