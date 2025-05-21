@@ -2173,6 +2173,62 @@ function runDiagnostics() {
     
     // Also make our local render function available if needed
     window.app.renderResults = renderResults;
+    
+    // Test the API connection on startup
+    setTimeout(() => {
+      if (app.apiUrl && app.apiKey) {
+        console.log('Testing API connection to:', app.apiUrl);
+        testApiCredentials()
+          .then(result => {
+            console.log('API connection test successful:', result);
+          })
+          .catch(error => {
+            console.error('API connection test failed:', error);
+            showWarning(`API connection test failed: ${error.message || 'Unknown error'}. Please check your configuration.`);
+          });
+      }
+    }, 2000);
+  }
+  
+  // Test API credentials by making a simple request
+  function testApiCredentials() {
+    return new Promise((resolve, reject) => {
+      if (!app.apiUrl || !app.apiKey) {
+        return reject(new Error('API URL or API Key not configured'));
+      }
+      
+      // Use a simple request to test - just get the first agent
+      const apiPath = '/api/v2/agents?per_page=1';
+      const fullApiUrl = app.apiUrl + apiPath;
+      
+      console.log('Testing API credentials with URL:', fullApiUrl);
+      
+      // Create auth token
+      const authToken = btoa(app.apiKey + ':X');
+      
+      // Make direct fetch request to ensure we're using the correct URL
+      fetch(fullApiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Basic ' + authToken,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`API returned status ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        resolve(data);
+      })
+      .catch(error => {
+        console.error('API test failed:', error);
+        reject(error);
+      });
+    });
   }
   
   // Update the application title displayed on the page
