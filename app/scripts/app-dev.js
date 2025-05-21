@@ -115,8 +115,8 @@ function createConfigManager() {
       ]
     },
     
-    initializeConfig: function(client) {
-      console.log('Initializing config with client');
+    initializeConfig: function(clientObj) {
+      console.log('Initializing config with client', clientObj.iparams ? 'available' : 'not available');
       // In development mode, just use default config
     },
     
@@ -186,6 +186,14 @@ function createUIManager(configManager) {
     
     runDiagnostics: function() {
       console.log('Running UI diagnostics for development mode');
+      // Check if required elements exist
+      const elements = ['requesterSearch', 'agentSearch', 'requesterResults', 'agentResults'];
+      const missing = elements.filter(id => !document.getElementById(id));
+      if (missing.length) {
+        console.warn(`Missing UI elements: ${missing.join(', ')}`);
+      } else {
+        console.log('All required UI elements found');
+      }
     }
   };
 }
@@ -238,6 +246,18 @@ function createUserSearchService(apiClient, uiManager) {
     
     performSearch: function() {
       console.log('Performing search with current inputs');
+      // Get the search input values
+      const requesterQuery = document.getElementById('requesterSearch')?.value;
+      const agentQuery = document.getElementById('agentSearch')?.value;
+      
+      // Perform search if inputs have values
+      if (requesterQuery && requesterQuery.length > 1) {
+        this.searchRequesters(requesterQuery);
+      }
+      
+      if (agentQuery && agentQuery.length > 1) {
+        this.searchUsers(agentQuery);
+      }
     }
   };
 }
@@ -354,7 +374,9 @@ window.selectItem = function(type, id, name, email, dept) {
   
   // Optional: Also store the selection
   if (window.app && window.app.client && window.app.client.data) {
-    window.app.client.data.set(`selected_${type}`, { id, name, email, dept }, function() {});
+    window.app.client.data.set(`selected_${type}`, { id, name, email, dept }, function(err) {
+      if (err) console.error('Error saving selection:', err);
+    });
   }
 };
 
@@ -369,7 +391,9 @@ window.clearSelectedItem = function(type) {
   
   // Optional: Clear stored selection
   if (window.app && window.app.client && window.app.client.data) {
-    window.app.client.data.set(`selected_${type}`, null, function() {});
+    window.app.client.data.set(`selected_${type}`, null, function(err) {
+      if (err) console.error('Error clearing selection:', err);
+    });
   }
 };
 
