@@ -2146,4 +2146,17 @@ function runDiagnostics() {
     // Also make our local render function available if needed
     window.app.renderResults = renderResults;
   }
+  
+  // Update the application title displayed on the page
+  function updateAppTitle(title) {
+    const titleElement = document.getElementById('appTitle');
+    if (titleElement) {
+      // Make sure we don't use null/undefined title, use configured default or fallback
+      const displayTitle = title || app.appTitle || 'Change Management';
+      titleElement.textContent = displayTitle;
+      console.log('Application title updated to:', displayTitle);
+    } else {
+      console.error('Title element not found in the DOM');
+    }
+  }
 })();
