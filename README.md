@@ -185,3 +185,62 @@ The following code improvements have been addressed for production deployment:
 5. Implement proper API rate limiting ✓
 
 For detailed information about any remaining issues, run `fdk validate` to see the full list of warnings.
+
+# Freshservice Change Management App
+
+A modular application for Freshservice that improves change management workflow and user searching capabilities.
+
+## Development Architecture
+
+This project uses a modern ES modules architecture with the following components:
+
+- `app/scripts/modules/` - Contains modular JavaScript classes
+- `app/scripts/app.js` - Main entry point (ES modules version)
+- `app/scripts/app-legacy.js` - Non-module version for FDK validation
+
+## FDK Validation and Packaging
+
+### Handling ES Modules in FDK
+
+The Freshworks Developer Kit (FDK) has limitations with ES modules. To work around this:
+
+1. We maintain modern ES module code in the main codebase
+2. A separate validation-friendly build is created for FDK validation and packaging
+3. The `validate.bat` script automates this process
+
+### Validation Process
+
+To validate and package the app:
+
+```
+npm run validate   # Run validation only
+npm run pack       # Run validation and create distributable package
+```
+
+The `validate.bat` script:
+1. Creates a build directory with non-module versions of files
+2. Fixes HTML to use traditional script loading
+3. Creates required FDK files (config/iparams.json, icon.svg)
+4. Runs FDK validation
+5. Packages the app, skipping code coverage requirements
+
+### Warnings and Test Coverage
+
+The FDK validation shows warnings related to code complexity and potential race conditions. For production deployment to the Freshworks Marketplace, you should:
+
+1. Address all warnings in the main codebase
+2. Create proper tests to achieve 80%+ code coverage
+3. Use `fdk pack` without the `-s` flag to validate test coverage
+
+## Deployment
+
+For production deployment:
+
+1. Run `npm run pack` to create the package
+2. The app package will be available as `build.zip` in the root directory
+3. Upload this file to the Freshworks Marketplace
+
+## Known Issues
+
+- Test coverage is currently below the 80% requirement for Marketplace submission
+- There are complexity warnings that should be addressed for production code

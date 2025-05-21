@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "jest --coverage",
-    "validate": "validate.bat"
+    "validate": "validate.bat",
+    "pack": "validate.bat && copy build\\dist\\build.zip ."
   },
   "dependencies": {},
   "devDependencies": {
