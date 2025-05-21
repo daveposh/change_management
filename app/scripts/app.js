@@ -548,8 +548,9 @@ function runDiagnostics() {
   function initializeApp() {
     console.log('Initializing Change Management app');
     
-    // Show the loading indicator
+    // Show the loading indicator - but with timeout protection
     toggleSpinner(true);
+    setTimeout(() => toggleSpinner(false), 5000); // Force hide after 5 seconds
     
     // Create a safety net if client is not defined yet
     if (typeof client === 'undefined') {
@@ -559,16 +560,24 @@ function runDiagnostics() {
     
     // Attempt to get client from the Freshworks SDK
     try {
-    client.initialized()
-      .then(function() {
-        console.log('Freshworks Client initialized');
-        onClientReady(client);
-      })
-      .catch(function(error) {
-        console.error('Failed to initialize Freshworks client:', error);
-        // Fall back to direct initialization without the client
+      // Set a timeout to proceed anyway if the initialization takes too long
+      const initTimeout = setTimeout(() => {
+        console.warn('Client initialization taking too long, proceeding with fallback');
         initializeFallback();
-      });
+      }, 3000);
+      
+      client.initialized()
+        .then(function() {
+          clearTimeout(initTimeout);
+          console.log('Freshworks Client initialized');
+          onClientReady(client);
+        })
+        .catch(function(error) {
+          clearTimeout(initTimeout);
+          console.error('Failed to initialize Freshworks client:', error);
+          // Fall back to direct initialization without the client
+          initializeFallback();
+        });
     } catch (error) {
       console.error('Error initializing client:', error);
       initializeFallback();
