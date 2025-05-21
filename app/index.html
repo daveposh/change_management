@@ -16,6 +16,15 @@
           event.preventDefault();
         }
       }, true);
+      
+      // Immediately hide spinner overlay to prevent loading state
+      document.addEventListener('DOMContentLoaded', function() {
+        const spinner = document.getElementById('spinnerOverlay');
+        if (spinner) {
+          console.log('Forcibly hiding spinner overlay from HTML');
+          spinner.classList.add('d-none');
+        }
+      });
     </script>
   </head>
 
@@ -171,19 +180,44 @@
           </div>
         </div>
       </div>
+    </div>
 
-      <div id="spinnerOverlay" class="d-none">
-        <div class="spinner-border text-primary" role="status">
-          <span class="sr-only">Loading...</span>
-        </div>
+    <!-- Spinner Overlay moved outside container for better visibility -->
+    <div id="spinnerOverlay" class="d-none">
+      <div class="spinner-border text-primary" role="status">
+        <span class="sr-only">Loading...</span>
       </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN" crossorigin="anonymous"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js" integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV" crossorigin="anonymous"></script>
+    
+    <!-- Common utility file -->
     <script src="scripts/api-utils.js"></script>
-    <script src="scripts/app.js"></script>
+    
+    <!-- Legacy non-module version for FDK compatibility -->
+    <script src="scripts/app-legacy.js"></script>
+    
+    <!-- ES Module versions for modern browsers -->
+    <script type="module" src="scripts/app.js"></script>
+    
+    <!-- Change form script -->
     <script src="scripts/change-form.js"></script>
+    
+    <!-- Fallback for browsers that don't support ES modules -->
+    <script nomodule>
+      console.error('Your browser does not support ES modules. Please use a modern browser.');
+      // Add a visible warning
+      document.addEventListener('DOMContentLoaded', function() {
+        const container = document.querySelector('.container');
+        if (container) {
+          const warning = document.createElement('div');
+          warning.className = 'alert alert-danger mt-2';
+          warning.innerHTML = '<strong>Browser Not Supported</strong><p>Your browser does not support modern JavaScript features. Please use a newer browser for the best experience.</p>';
+          container.prepend(warning);
+        }
+      });
+    </script>
   </body>
 </html>

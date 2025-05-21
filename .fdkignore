@@ -1,0 +1,13 @@
+# Ignore ES module files that cause parsing errors in FDK validator
+app/scripts/modules/
+app/scripts/index.js
+app/scripts/app.js
+app/scripts/test-search.js
+eslint.config.js
+
+# Ignore npm related files
+node_modules/
+package-lock.json
+
+# Do not ignore the legacy non-module versions
+!app/scripts/*-legacy.js 
