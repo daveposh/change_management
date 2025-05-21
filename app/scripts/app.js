@@ -22,18 +22,6 @@ function toggleSpinner(show) {
   }
 }
 
-// Ensure spinner is hidden after a timeout (failsafe)
-function setupSpinnerTimeout() {
-  // Force hide spinner after 8 seconds in case initialization hangs
-  setTimeout(function() {
-    const spinner = document.getElementById('spinnerOverlay');
-    if (spinner && !spinner.classList.contains('d-none')) {
-      console.warn('Spinner timeout reached - forcing spinner to hide');
-      toggleSpinner(false);
-    }
-  }, 8000);
-}
-
 // Fix for local development environment
 (function() {
   // Check if we're in a local development environment
@@ -583,9 +571,6 @@ function runDiagnostics() {
     // Show the loading indicator
     toggleSpinner(true);
     
-    // Set up spinner timeout as a failsafe
-    setupSpinnerTimeout();
-    
     // Create a safety net if client is not defined yet
     if (typeof client === 'undefined') {
       console.warn('Client object not available, creating fallback client');
@@ -594,23 +579,21 @@ function runDiagnostics() {
     
     // Attempt to get client from the Freshworks SDK
     try {
-      client.initialized()
-        .then(function() {
-          console.log('Freshworks Client initialized');
-          onClientReady(client);
-        })
-        .catch(function(error) {
-          console.error('Failed to initialize Freshworks client:', error);
-          // Fall back to direct initialization without the client
-          initializeFallback();
-        });
+    client.initialized()
+      .then(function() {
+        console.log('Freshworks Client initialized');
+        onClientReady(client);
+      })
+      .catch(function(error) {
+        console.error('Failed to initialize Freshworks client:', error);
+        // Fall back to direct initialization without the client
+        initializeFallback();
+      });
     } catch (error) {
       console.error('Error initializing client:', error);
       initializeFallback();
-      // Hide spinner on error
-      toggleSpinner(false);
     }
-    
+      
     // Set up integration with change form
     integrateWithChangeForm();
   }
@@ -639,16 +622,12 @@ function runDiagnostics() {
     const devClient = createDevClient();
     window.client = devClient;
     onClientReady(devClient);
-    
-    // Ensure spinner is hidden
-    toggleSpinner(false);
   }
   
   function onClientReady(client) {
     // Ensure we only initialize once
     if (window.app && window.app.initialized) {
       console.log('App already initialized, skipping initialization');
-      toggleSpinner(false);
       return;
     }
     
@@ -668,14 +647,6 @@ function runDiagnostics() {
         
         // Run diagnostics after a short delay
         setTimeout(runDiagnostics, 2000);
-        
-        // Hide spinner once initialization is done
-        toggleSpinner(false);
-      })
-      .catch(error => {
-        console.error('Error during initialization:', error);
-        // Hide spinner on error
-        toggleSpinner(false);
       });
   }
   
@@ -932,8 +903,6 @@ function runDiagnostics() {
       });
       
       updateAppTitle(app.appTitle);
-      // Hide spinner after configuration is loaded
-      toggleSpinner(false);
       return;
     }
     
@@ -998,6 +967,106 @@ function runDiagnostics() {
       });
     }
     
+    function loadFromStorage() {
+      console.log('Loading from client.db storage');
+      return client.db.get('app_config')
+        .then(config => {
+          if (config && config.apiUrl) {
+            console.log('Using configuration from data storage');
+            
+            // Process API URL to ensure it has proper format
+            let apiUrl = config.apiUrl;
+            if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+              apiUrl = 'https://' + apiUrl;
+            }
+            
+            // Verify it's not using the example domain
+            if (apiUrl.includes('example.freshservice.com')) {
+              console.warn('Found example domain in storage, will use defaults');
+              return false;
+            }
+            
+            app.apiUrl = apiUrl;
+            app.apiKey = config.apiKey;
+            app.appTitle = config.appTitle || 'Change Management';
+            app.changeTypes = config.changeTypes || [
+              "Standard Change", 
+              "Emergency Change", 
+              "Non-Standard Change"
+            ];
+            
+            // Set up API endpoints
+            app.endpoints = {
+              users: `${app.apiUrl}/api/v2/agents`,
+              requesters: `${app.apiUrl}/api/v2/requesters`,
+              groups: `${app.apiUrl}/api/v2/groups`
+            };
+            
+            console.log('API endpoints configured from storage:', app.endpoints);
+            updateAppTitle(app.appTitle);
+            return true;
+          }
+          return false;
+        })
+        .catch(err => {
+          console.error('Error loading from storage:', err);
+          return false;
+        });
+    }
+    
+    // Try to load from localStorage as a fallback for migration
+    function loadFromLocalStorage() {
+      console.log('Trying to load from localStorage as last resort');
+      try {
+        const savedData = localStorage.getItem('freshservice_change_management_iparams');
+        if (savedData) {
+          const config = JSON.parse(savedData);
+          
+          if (config && config.api_url && !config.api_url.includes('example.freshservice.com')) {
+            console.log('Using configuration from localStorage');
+            
+            // Process API URL to ensure it has proper format
+            let apiUrl = config.api_url;
+            if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+              apiUrl = 'https://' + apiUrl;
+            }
+            
+            app.apiUrl = apiUrl;
+            app.apiKey = config.api_key;
+            app.appTitle = config.app_title || 'Change Management';
+            app.changeTypes = config.change_types || [
+              "Standard Change", 
+              "Emergency Change", 
+              "Non-Standard Change"
+            ];
+            
+            // Set up API endpoints
+            app.endpoints = {
+              users: `${app.apiUrl}/api/v2/agents`,
+              requesters: `${app.apiUrl}/api/v2/requesters`,
+              groups: `${app.apiUrl}/api/v2/groups`
+            };
+            
+            console.log('API endpoints configured from localStorage:', app.endpoints);
+            
+            // Migrate to client.db
+            saveConfigToStorage(client, {
+              apiUrl: app.apiUrl,
+              apiKey: app.apiKey,
+              appTitle: app.appTitle,
+              changeTypes: app.changeTypes
+            });
+            
+            updateAppTitle(app.appTitle);
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error('Error reading from localStorage:', e);
+      }
+      return false;
+    }
+    
     // First try to load from iparams (app settings)
     loadFromIparams()
       .then(found => {
@@ -1027,495 +1096,1065 @@ function runDiagnostics() {
             "Non-Standard Change"
           ];
           
-          // Ensure config prompt is properly displayed
-          showConfigurationPrompt();
-          // Ensure spinner is hidden when showing config form
-          toggleSpinner(false);
-        } else {
-          // Configuration loaded successfully
-          toggleSpinner(false);
+          // Show a more prominent configuration prompt
+          const configPrompt = `
+            <div class="alert alert-warning mt-2 mb-2">
+              <h4>Configuration Required</h4>
+              <p>Please configure your Freshservice domain and API key using one of the following methods:</p>
+              <ol>
+                <li>Add URL parameters: <code>?api_url=yourdomain.freshservice.com&api_key=your_api_key</code></li>
+                <li>Install the app properly through Freshservice Admin interface</li>
+              </ol>
+              <div class="input-group mt-3">
+                <div class="input-group-prepend">
+                  <span class="input-group-text">Domain</span>
+                </div>
+                <input type="text" id="configApiUrl" class="form-control" placeholder="yourdomain.freshservice.com">
+              </div>
+              <div class="input-group mt-2">
+                <div class="input-group-prepend">
+                  <span class="input-group-text">API Key</span>
+                </div>
+                <input type="text" id="configApiKey" class="form-control" placeholder="Your Freshservice API key">
+              </div>
+              <div class="mt-2">
+                <button id="saveConfigBtn" class="btn btn-primary">Save Configuration</button>
+                <button id="testConnectionBtn" class="btn btn-outline-info ml-2">Test Connection</button>
+              </div>
+            </div>
+          `;
+          
+          // Add to page
+          const container = document.querySelector('.container');
+          if (container) {
+            // Create element for the prompt
+            const promptElement = document.createElement('div');
+            promptElement.innerHTML = configPrompt;
+            container.insertBefore(promptElement, container.firstChild);
+            
+                          // Add event listeners to the buttons
+              setTimeout(() => {
+                // Add test connection button handler
+                const testConnectionBtn = document.getElementById('testConnectionBtn');
+                if (testConnectionBtn) {
+                  testConnectionBtn.addEventListener('click', function() {
+                    const apiUrlInput = document.getElementById('configApiUrl');
+                    const apiKeyInput = document.getElementById('configApiKey');
+                    
+                    if (apiUrlInput && apiKeyInput) {
+                      const apiUrl = apiUrlInput.value.trim();
+                      const apiKey = apiKeyInput.value.trim();
+                      
+                      if (apiUrl && apiKey) {
+                        // Show testing status
+                        testConnectionBtn.disabled = true;
+                        testConnectionBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Testing...';
+                        
+                        // Process API URL to ensure it has proper format
+                        let fullApiUrl = apiUrl;
+                        if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
+                          fullApiUrl = 'https://' + fullApiUrl;
+                        }
+                        
+                        // Temporarily set the app configuration
+                        const origApiUrl = app.apiUrl;
+                        const origApiKey = app.apiKey;
+                        
+                        app.apiUrl = fullApiUrl;
+                        app.apiKey = apiKey;
+                        
+                        // Test the connection
+                        testApiCredentials()
+                          .then(data => {
+                            // Success - show confirmation
+                            const successMsg = document.createElement('div');
+                            successMsg.className = 'alert alert-success mt-2';
+                            
+                            if (data && data.agents && data.agents.length > 0) {
+                              const agentName = `${data.agents[0].first_name} ${data.agents[0].last_name}`;
+                              successMsg.innerHTML = `Connection successful! Found agent: ${agentName}`;
+                            } else {
+                              successMsg.innerHTML = 'Connection successful! API credentials are valid.';
+                            }
+                            
+                            // Remove any existing messages
+                            const existingMessages = container.querySelectorAll('.alert');
+                            existingMessages.forEach(el => {
+                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
+                                el.remove();
+                              }
+                            });
+                            
+                            container.insertBefore(successMsg, promptElement.nextSibling);
+                          })
+                          .catch(error => {
+                            // Error - show warning
+                            const errorMsg = document.createElement('div');
+                            errorMsg.className = 'alert alert-danger mt-2';
+                            errorMsg.innerHTML = `Connection failed: ${error.message}`;
+                            
+                            // Remove any existing messages
+                            const existingMessages = container.querySelectorAll('.alert');
+                            existingMessages.forEach(el => {
+                              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
+                                el.remove();
+                              }
+                            });
+                            
+                            container.insertBefore(errorMsg, promptElement.nextSibling);
+                          })
+                          .finally(() => {
+                            // Reset the app configuration
+                            app.apiUrl = origApiUrl;
+                            app.apiKey = origApiKey;
+                            
+                            // Reset button
+                            testConnectionBtn.disabled = false;
+                            testConnectionBtn.innerHTML = 'Test Connection';
+                          });
+                      } else {
+                        // Show error for missing fields
+                        const errorMsg = document.createElement('div');
+                        errorMsg.className = 'alert alert-danger mt-2';
+                        errorMsg.innerHTML = 'Please enter both domain and API key to test connection';
+                        
+                        // Remove any existing error messages
+                        const existingErrors = container.querySelectorAll('.alert-danger');
+                        existingErrors.forEach(el => {
+                          if (el.textContent.includes('Please enter both')) {
+                            el.remove();
+                          }
+                        });
+                        
+                        container.insertBefore(errorMsg, promptElement.nextSibling);
+                      }
+                    }
+                  });
+                }
+                
+                // Add save button handler
+                const saveBtn = document.getElementById('saveConfigBtn');
+                if (saveBtn) {
+                  saveBtn.addEventListener('click', function() {
+                    const apiUrlInput = document.getElementById('configApiUrl');
+                    const apiKeyInput = document.getElementById('configApiKey');
+                  
+                  if (apiUrlInput && apiKeyInput) {
+                    const apiUrl = apiUrlInput.value.trim();
+                    const apiKey = apiKeyInput.value.trim();
+                    
+                    if (apiUrl && apiKey) {
+                      // Process API URL to ensure it has proper format
+                      let fullApiUrl = apiUrl;
+                      if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
+                        fullApiUrl = 'https://' + fullApiUrl;
+                      }
+                      
+                      // Update app configuration
+                      app.apiUrl = fullApiUrl;
+                      app.apiKey = apiKey;
+                      
+                      // Set up API endpoints
+                      app.endpoints = {
+                        users: `${app.apiUrl}/api/v2/agents`,
+                        requesters: `${app.apiUrl}/api/v2/requesters`,
+                        groups: `${app.apiUrl}/api/v2/groups`
+                      };
+                      
+                      // Save to storage
+                      saveConfigToStorage(client, {
+                        apiUrl: app.apiUrl,
+                        apiKey: app.apiKey,
+                        appTitle: app.appTitle,
+                        changeTypes: app.changeTypes
+                      });
+                      
+                      // Show success message
+                      const successMsg = document.createElement('div');
+                      successMsg.className = 'alert alert-success';
+                      successMsg.innerHTML = 'Configuration saved successfully. Reloading...';
+                      container.insertBefore(successMsg, container.firstChild);
+                      
+                      // Reload the page after a short delay
+                      setTimeout(function() {
+                        location.reload();
+                      }, 1500);
+                    } else {
+                      // Show error for missing fields
+                      const errorMsg = document.createElement('div');
+                      errorMsg.className = 'alert alert-danger mt-2';
+                      errorMsg.innerHTML = 'Please enter both domain and API key';
+                      
+                      // Remove any existing error messages
+                      const existingErrors = container.querySelectorAll('.alert-danger');
+                      existingErrors.forEach(el => {
+                        if (el.textContent.includes('Please enter both')) {
+                          el.remove();
+                        }
+                      });
+                      
+                      // Add the new error message
+                      container.insertBefore(errorMsg, promptElement.nextSibling);
+                    }
+                  }
+                });
+              }
+            }, 500);
+          }
+          
+          updateAppTitle(app.appTitle);
         }
-      })
-      .catch(error => {
-        console.error('Error loading configuration:', error);
-        // Show configuration prompt on error
-        showConfigurationPrompt();
-        // Ensure spinner is hidden
-        toggleSpinner(false);
       });
   }
   
-  // Helper function to show configuration prompt
-  function showConfigurationPrompt() {
-    console.log('Showing configuration prompt');
+  function saveConfigToStorage(client, config) {
+    console.log('Saving config to data storage');
+    if (client && client.db) {
+      client.db.set('app_config', config)
+        .then(() => console.log('Config saved to data storage'))
+        .catch(err => console.error('Error saving config to data storage:', err));
+    }
+  }
+  
+  // Setup event listeners for the app
+  function setupEventListeners() {
+    console.log('Setting up event listeners...');
     
-    // Create a more prominent configuration prompt
-    const configPrompt = `
-      <div class="alert alert-warning mt-2 mb-2">
-        <h4>Configuration Required</h4>
-        <p>Please configure your Freshservice domain and API key using one of the following methods:</p>
-        <ol>
-          <li>Add URL parameters: <code>?api_url=yourdomain.freshservice.com&api_key=your_api_key</code></li>
-          <li>Install the app properly through Freshservice Admin interface</li>
-        </ol>
-        <div class="input-group mt-3">
-          <div class="input-group-prepend">
-            <span class="input-group-text">Domain</span>
-          </div>
-          <input type="text" id="configApiUrl" class="form-control" placeholder="yourdomain.freshservice.com">
-        </div>
-        <div class="input-group mt-2">
-          <div class="input-group-prepend">
-            <span class="input-group-text">API Key</span>
-          </div>
-          <input type="text" id="configApiKey" class="form-control" placeholder="Your Freshservice API key">
-        </div>
-        <div class="mt-2">
-          <button id="saveConfigBtn" class="btn btn-primary">Save Configuration</button>
-          <button id="testConnectionBtn" class="btn btn-outline-info ml-2">Test Connection</button>
+    // Search button click event
+    const searchButton = document.getElementById('searchButton');
+    if (searchButton) {
+      console.log('Search button found, adding click event');
+      searchButton.addEventListener('click', function() {
+        console.log('Search button clicked');
+        performSearch();
+      });
+    } else {
+      console.error('Search button not found in the DOM');
+    }
+    
+    // Enter key press in search input
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      console.log('Search input found, adding keypress event');
+      searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          console.log('Enter key pressed in search input');
+          performSearch();
+        }
+      });
+      
+      // Add saved searches dropdown
+      addSavedSearchesDropdown(searchInput);
+    } else {
+      console.error('Search input not found in the DOM');
+    }
+    
+    // Tab switching
+    const tabs = document.querySelectorAll('.nav-link');
+    if (tabs.length > 0) {
+      console.log('Nav tabs found, adding click events');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', function(e) {
+          e.preventDefault();
+          console.log('Tab clicked:', this.id);
+          
+          // Hide all tab panes
+          document.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.remove('show', 'active');
+          });
+          
+          // Show the selected tab pane
+          const target = document.querySelector(this.getAttribute('href'));
+          if (target) {
+            target.classList.add('show', 'active');
+          }
+          
+          // Set active tab
+          tabs.forEach(t => t.classList.remove('active'));
+          this.classList.add('active');
+        });
+      });
+    } else {
+      console.error('Nav tabs not found in the DOM');
+    }
+    
+    console.log('Event listeners setup complete');
+  }
+  
+  // Add saved searches dropdown next to search input
+  function addSavedSearchesDropdown(searchInput) {
+    // Create a parent container for search input and dropdown
+    const parentDiv = document.createElement('div');
+    parentDiv.className = 'input-group';
+    
+    // Insert parent div before search input
+    searchInput.parentNode.insertBefore(parentDiv, searchInput);
+    
+    // Move search input into parent div
+    parentDiv.appendChild(searchInput);
+    
+    // Create dropdown button
+    const dropdownButton = document.createElement('div');
+    dropdownButton.className = 'input-group-append';
+    dropdownButton.innerHTML = `
+      <button class="btn btn-outline-secondary dropdown-toggle" type="button" 
+              id="savedSearchesDropdown" data-toggle="dropdown" 
+              aria-haspopup="true" aria-expanded="false" title="Saved Searches">
+        <svg width="16" height="16" viewBox="0 0 16 16" class="bi bi-bookmark" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd" d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v13.5a.5.5 0 0 1-.777.416L8 13.101l-5.223 2.815A.5.5 0 0 1 2 15.5V2zm2-1a1 1 0 0 0-1 1v12.566l4.723-2.482a.5.5 0 0 1 .554 0L13 14.566V2a1 1 0 0 0-1-1H4z"/>
+        </svg>
+      </button>
+      <div class="dropdown-menu dropdown-menu-right" aria-labelledby="savedSearchesDropdown" id="savedSearchesMenu">
+        <!-- Saved searches will be added here -->
+        <div class="dropdown-item text-center text-muted small" id="noSavedSearchesMsg">No saved searches</div>
+        <div class="dropdown-divider"></div>
+        <div class="px-3 py-2">
+          <button class="btn btn-sm btn-outline-primary btn-block" id="saveCurrentSearchBtn">
+            Save Current Search
+          </button>
         </div>
       </div>
     `;
     
-    // Add to page
-    const container = document.querySelector('.container');
-    if (container) {
-      // Check if configuration prompt already exists
-      if (!document.querySelector('.alert.alert-warning h4')) {
-        // Create element for the prompt
-        const promptElement = document.createElement('div');
-        promptElement.innerHTML = configPrompt;
-        container.insertBefore(promptElement, container.firstChild);
-        
-        // Add event listeners to the buttons after a short delay
-        setTimeout(setupConfigButtonListeners, 500);
+    // Add dropdown to input group
+    parentDiv.appendChild(dropdownButton);
+    
+    // Load saved searches
+    loadSavedSearches();
+    
+    // Add event listener for save button
+    document.addEventListener('click', function(e) {
+      if (e.target && e.target.id === 'saveCurrentSearchBtn') {
+        saveCurrentSearch();
       }
-    }
+    });
   }
   
-  // Setup event listeners for configuration form buttons
-  function setupConfigButtonListeners() {
-    const container = document.querySelector('.container');
-    if (!container) return;
-    
-    // Add test connection button handler
-    const testConnectionBtn = document.getElementById('testConnectionBtn');
-    if (testConnectionBtn) {
-      testConnectionBtn.addEventListener('click', testConnectionHandler);
-    }
-    
-    // Add save button handler
-    const saveBtn = document.getElementById('saveConfigBtn');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', saveConfigHandler);
-    }
-  }
-  
-  // Handler for test connection button
-  function testConnectionHandler() {
-    const container = document.querySelector('.container');
-    const apiUrlInput = document.getElementById('configApiUrl');
-    const apiKeyInput = document.getElementById('configApiKey');
-    
-    if (apiUrlInput && apiKeyInput) {
-      const apiUrl = apiUrlInput.value.trim();
-      const apiKey = apiKeyInput.value.trim();
+  // Load saved searches from localStorage
+  function loadSavedSearches() {
+    setTimeout(() => {
+      const savedSearchesMenu = document.getElementById('savedSearchesMenu');
+      const noSavedSearchesMsg = document.getElementById('noSavedSearchesMsg');
       
-      if (apiUrl && apiKey) {
-        // Show testing status
-        testConnectionBtn.disabled = true;
-        testConnectionBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Testing...';
+      if (!savedSearchesMenu) return;
+      
+      try {
+        // Get saved searches from localStorage
+        const savedSearches = JSON.parse(localStorage.getItem('freshservice_saved_searches') || '[]');
         
-        // Process API URL to ensure it has proper format
-        let fullApiUrl = apiUrl;
-        if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
-          fullApiUrl = 'https://' + fullApiUrl;
+        // Remove existing search items (except the last two items - divider and save button)
+        const children = Array.from(savedSearchesMenu.children);
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+          if (child.classList.contains('saved-search-item')) {
+            savedSearchesMenu.removeChild(child);
+          }
         }
         
-        // Temporarily set the app configuration
-        const origApiUrl = app.apiUrl;
-        const origApiKey = app.apiKey;
-        
-        app.apiUrl = fullApiUrl;
-        app.apiKey = apiKey;
-        
-        // Test the connection
-        testApiCredentials()
-          .then(data => {
-            // Success - show confirmation
-            const successMsg = document.createElement('div');
-            successMsg.className = 'alert alert-success mt-2';
+        // Show or hide "no saved searches" message
+        if (savedSearches.length === 0) {
+          if (noSavedSearchesMsg) noSavedSearchesMsg.style.display = 'block';
+        } else {
+          if (noSavedSearchesMsg) noSavedSearchesMsg.style.display = 'none';
+          
+          // Add saved searches to dropdown
+          savedSearches.forEach((search, index) => {
+            const item = document.createElement('a');
+            item.className = 'dropdown-item saved-search-item';
+            item.href = '#';
+            item.setAttribute('data-search', search.query);
+            item.setAttribute('data-index', index);
             
-            if (data && data.agents && data.agents.length > 0) {
-              const agentName = `${data.agents[0].first_name} ${data.agents[0].last_name}`;
-              successMsg.innerHTML = `Connection successful! Found agent: ${agentName}`;
-            } else {
-              successMsg.innerHTML = 'Connection successful! API credentials are valid.';
-            }
-            
-            // Remove any existing messages
-            const existingMessages = container.querySelectorAll('.alert-success, .alert-danger');
-            existingMessages.forEach(el => {
-              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
-                el.remove();
+            // Handle click on saved search
+            item.addEventListener('click', function(e) {
+              e.preventDefault();
+              const searchInput = document.getElementById('searchInput');
+              if (searchInput) {
+                searchInput.value = this.getAttribute('data-search');
+                
+                // Auto-execute the search
+                performSearch();
               }
             });
             
-            // Find the configuration prompt
-            const promptElement = container.querySelector('.alert.alert-warning');
-            if (promptElement) {
-              container.insertBefore(successMsg, promptElement.nextSibling);
+            // Add delete button for each search
+            item.innerHTML = `
+              <div class="d-flex justify-content-between align-items-center">
+                <span>${escapeHtml(search.query)}</span>
+                <button class="btn btn-sm btn-link text-danger p-0 ml-2 delete-saved-search" 
+                        title="Delete this saved search" data-index="${index}">
+                  <svg width="14" height="14" viewBox="0 0 16 16" class="bi bi-x" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path fill-rule="evenodd" d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                  </svg>
+                </button>
+              </div>
+            `;
+            
+            // Insert before the divider
+            const divider = savedSearchesMenu.querySelector('.dropdown-divider');
+            if (divider) {
+              savedSearchesMenu.insertBefore(item, divider);
             } else {
-              container.insertBefore(successMsg, container.firstChild);
+              savedSearchesMenu.appendChild(item);
+            }
+          });
+          
+          // Add event listeners for delete buttons
+          document.querySelectorAll('.delete-saved-search').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation(); // Prevent triggering parent click
+              
+              const index = parseInt(this.getAttribute('data-index'), 10);
+              deleteSavedSearch(index);
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error loading saved searches:', error);
+      }
+    }, 500); // Short delay to ensure DOM is ready
+  }
+  
+  // Save current search query
+  function saveCurrentSearch() {
+    const searchInput = document.getElementById('searchInput');
+    if (!searchInput || !searchInput.value.trim()) return;
+    
+    try {
+      // Get current query
+      const query = searchInput.value.trim();
+      
+      // Get current tab (users or requesters)
+      const activeTab = document.querySelector('.nav-link.active');
+      const searchType = activeTab && activeTab.id === 'users-tab' ? 'users' : 'requesters';
+      
+      // Get existing saved searches
+      const savedSearches = JSON.parse(localStorage.getItem('freshservice_saved_searches') || '[]');
+      
+      // Check if search already exists to avoid duplicates
+      const exists = savedSearches.some(item => item.query === query && item.type === searchType);
+      
+      if (!exists) {
+        // Add new search
+        savedSearches.push({
+          query,
+          type: searchType,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Sort by newest first
+        savedSearches.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // Keep only the 10 most recent searches
+        const trimmedSearches = savedSearches.slice(0, 10);
+        
+        // Save to localStorage
+        localStorage.setItem('freshservice_saved_searches', JSON.stringify(trimmedSearches));
+        
+        // Show success message
+        const notification = document.createElement('div');
+        notification.style.position = 'fixed';
+        notification.style.bottom = '20px';
+        notification.style.right = '20px';
+        notification.style.backgroundColor = '#28a745';
+        notification.style.color = 'white';
+        notification.style.padding = '10px 15px';
+        notification.style.borderRadius = '4px';
+        notification.style.zIndex = '9999';
+        notification.textContent = 'Search saved!';
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 2 seconds
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 2000);
+        
+        // Reload the dropdown
+        loadSavedSearches();
+      }
+    } catch (error) {
+      console.error('Error saving search:', error);
+    }
+  }
+  
+  // Delete a saved search by index
+  function deleteSavedSearch(index) {
+    try {
+      // Get existing saved searches
+      const savedSearches = JSON.parse(localStorage.getItem('freshservice_saved_searches') || '[]');
+      
+      // Remove the search at the specified index
+      if (index >= 0 && index < savedSearches.length) {
+        savedSearches.splice(index, 1);
+        
+        // Save updated list to localStorage
+        localStorage.setItem('freshservice_saved_searches', JSON.stringify(savedSearches));
+        
+        // Reload the dropdown
+        loadSavedSearches();
+      }
+    } catch (error) {
+      console.error('Error deleting saved search:', error);
+    }
+  }
+  
+  // Determine if search term is an advanced query or a simple search
+  function isAdvancedQuery(searchTerm) {
+    // Check for common advanced query patterns
+    return (
+      searchTerm.includes(':') || // Field specification
+      searchTerm.includes('AND ') || 
+      searchTerm.includes(' AND') || 
+      searchTerm.includes('OR ') || 
+      searchTerm.includes(' OR') || 
+      searchTerm.includes('(') || // Parentheses for grouping
+      searchTerm.includes(')') ||
+      searchTerm.includes('~[') || // Prefix search
+      searchTerm.includes('<') || // Less than
+      searchTerm.includes('>') || // Greater than
+      searchTerm.includes('!=')   // Not equal
+    );
+  }
+  
+  // Perform search based on input
+  function performSearch() {
+    console.log('performSearch() called');
+    
+    const searchInput = document.getElementById('searchInput');
+    if (!searchInput) {
+      console.error('Search input element not found');
+      return showError('Search input element not found');
+    }
+    
+    const searchTerm = searchInput.value.trim();
+    console.log('Search term:', searchTerm);
+    
+    if (!searchTerm) {
+      console.warn('Empty search term');
+      return showError('Please enter a search term');
+    }
+    
+    // Check if API URL and key are configured
+    if (!app.apiUrl || !app.apiKey) {
+      console.error('API configuration missing', { apiUrl: app.apiUrl, apiKeyExists: !!app.apiKey });
+      
+      // Show a more helpful error message with configuration instructions
+      const errorMessage = `
+        <strong>API Configuration Missing</strong>
+        <p>Please configure the app using one of these methods:</p>
+        <ol>
+          <li>Add URL parameters: <code>?api_url=yourdomain.freshservice.com&api_key=your_api_key</code></li>
+          <li>Use the Reset button to clear configuration and set it up again</li>
+          <li>Install the app properly through Freshservice Admin interface</li>
+        </ol>
+      `;
+      return showError(errorMessage);
+    }
+    
+    // Validate API URL format
+    if (!app.apiUrl.includes('.freshservice.com')) {
+      console.error('Invalid API URL format:', app.apiUrl);
+      return showError(`Invalid API URL format: ${app.apiUrl}<br>URL must include .freshservice.com domain`);
+    }
+    
+    // Show loading spinner
+    toggleSpinner(true);
+    
+    // Get active tab
+    const activeTab = document.querySelector('.nav-link.active');
+    if (!activeTab) {
+      console.error('No active tab found');
+      toggleSpinner(false);
+      return showError('No active tab found');
+    }
+    
+    const searchType = activeTab.id === 'users-tab' ? 'users' : 'requesters';
+    console.log('Search type:', searchType);
+    
+    // Clear previous results
+    const resultsContainer = document.getElementById(`${searchType}Results`);
+    if (resultsContainer) {
+      resultsContainer.innerHTML = '';
+      
+      // Add search status message
+      const statusMsg = document.createElement('div');
+      statusMsg.className = 'alert alert-info mt-2';
+      statusMsg.id = 'searchStatus';
+      
+      // Check if this is an advanced query
+      const isAdvanced = isAdvancedQuery(searchTerm);
+      
+      // Format the status message based on query type
+      if (isAdvanced) {
+        statusMsg.innerHTML = `
+          Executing advanced query for ${searchType}:<br>
+          <code class="text-dark bg-light p-1">${escapeHtml(searchTerm)}</code>
+        `;
+      } else {
+        statusMsg.innerHTML = `Searching for ${searchType} matching: <strong>${escapeHtml(searchTerm)}</strong>...`;
+      }
+      
+      resultsContainer.appendChild(statusMsg);
+      
+    } else {
+      console.error(`Results container '${searchType}Results' not found`);
+      toggleSpinner(false);
+      return showError('Results container not found');
+    }
+    
+    // Prepare the search query
+    let queryString;
+    
+    // Check if this is an advanced query
+    if (isAdvancedQuery(searchTerm)) {
+      // Use the search term directly as the query parameter
+      console.log('Using advanced query:', searchTerm);
+      queryString = searchTerm;
+    } else {
+      // Use the prefix search syntax for first_name, last_name, or email
+      console.log('Using prefix search across multiple fields');
+      queryString = `~[first_name|last_name|email]:'${searchTerm}'`;
+    }
+    
+    // Perform search based on active tab with the query
+    const searchPromise = searchType === 'users' ? 
+      searchUsers(queryString) : 
+      searchRequesters(queryString);
+    
+    // Add a timeout to detect long-running searches
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => {
+        // Check if the spinner is still visible after 10 seconds
+        if (!document.getElementById('spinnerOverlay').classList.contains('d-none')) {
+          console.log('Search taking longer than expected, updating status message');
+          const statusMsg = document.getElementById('searchStatus');
+          if (statusMsg) {
+            statusMsg.innerHTML = `
+              Still searching... <br>
+              <small class="text-muted">If this takes too long, check your API configuration or network connection.</small>
+              <small class="text-muted d-block mt-1">Complex queries may take longer to complete.</small>
+            `;
+          }
+        }
+      }, 10000); // 10 seconds timeout
+      
+      // This resolve doesn't affect the actual search
+      resolve();
+    });
+    
+    // Run both promises (the actual search and the timeout checker)
+    Promise.all([searchPromise, timeoutPromise])
+      .catch(error => {
+        console.error('Error in search operation:', error);
+      });
+  }
+  
+  // Helper function to escape HTML
+  function escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+  
+  // Search for users via Freshservice API
+  function searchUsers(query) {
+    return new Promise((resolve, reject) => {
+      // Check if API URL and key are available
+      if (!app.apiUrl || !app.apiKey) {
+        console.error('API URL or API Key not configured');
+        showError('API configuration missing. Please check your settings.');
+        toggleSpinner(false);
+        return reject(new Error('API configuration missing'));
+      }
+      
+      // Show loading spinner
+      toggleSpinner(true);
+      
+      try {
+        // Build the query with proper encoding
+        const queryString = `~[first_name|last_name]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiPath = `/api/v2/agents?query="${encodedQuery}"`;
+        console.log('Request URL:', app.apiUrl + apiPath);
+        
+        // Use client.request instead of fetch
+        if (window.client && window.client.request) {
+          // Create an object to track if the request has been aborted
+          const abortInfo = { isAborted: false };
+          
+          // Create the request promise
+          const requestPromise = window.client.request.get(apiPath, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          })
+          .then(response => {
+            // Skip processing if the request was aborted
+            if (abortInfo.isAborted) {
+              console.log('Request was aborted');
+              return { agents: [] };
+            }
+            
+            // Parse the response JSON
+            const data = JSON.parse(response.response);
+            return data;
+          })
+          .then(data => {
+            console.log('API response:', data);
+            
+            if (data && data.agents && Array.isArray(data.agents)) {
+              console.log(`Found ${data.agents.length} agents matching the query`);
+              renderResults('users', data.agents);
+              resolve(data.agents);
+            } else {
+              console.warn('Response contained no agents array:', data);
+              // Check if data is in a different format
+              if (data && Array.isArray(data)) {
+                console.log('Data appears to be an array directly, using as agents');
+                renderResults('users', data);
+                resolve(data);
+              } else {
+                renderResults('users', []);
+                resolve([]);
+              }
             }
           })
           .catch(error => {
-            // Error - show warning
-            const errorMsg = document.createElement('div');
-            errorMsg.className = 'alert alert-danger mt-2';
-            errorMsg.innerHTML = `Connection failed: ${error.message || 'Unknown error'}`;
+            // Skip rendering if the request was aborted
+            if (abortInfo.isAborted) {
+              console.log('Request was aborted');
+              return resolve([]);
+            }
             
-            // Remove any existing messages
-            const existingMessages = container.querySelectorAll('.alert-success, .alert-danger');
-            existingMessages.forEach(el => {
-              if (el.textContent.includes('Connection successful') || el.textContent.includes('Connection failed')) {
-                el.remove();
+            console.error('API request failed:', error);
+            
+            let errorMessage = 'API request failed';
+            if (error.status) {
+              errorMessage += ` (Status: ${error.status})`;
+            }
+            if (error.message) {
+              errorMessage += `: ${error.message}`;
+            }
+            
+            showError(errorMessage);
+            renderResults('users', []);
+            resolve([]);
+          })
+          .finally(function() {
+            toggleSpinner(false);
+          });
+          
+          // Add an abort method to the promise
+          requestPromise.abort = () => {
+            abortInfo.isAborted = true;
+            // Note: client.request doesn't support aborting directly, 
+            // but we can prevent the handlers from processing the response
+          };
+          
+          return requestPromise;
+        } else {
+          // Fallback to fetch if client.request is not available
+          const authToken = btoa(app.apiKey + ':X');
+          console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
+          
+          const apiUrl = `${app.apiUrl}${apiPath}`;
+          
+          // Create an AbortController to handle request cancellation
+          const controller = new AbortController();
+          const signal = controller.signal;
+          
+          // Attach the abort controller to the promise for external cancellation
+          const fetchPromise = fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            signal: signal
+          });
+          
+          // Add abort method to the promise
+          fetchPromise.abort = () => controller.abort();
+          
+          // Return the fetch promise
+          fetchPromise
+            .then(response => {
+              if (!response.ok) {
+                const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
+                error.status = response.status;
+                throw error;
               }
+              return response.json();
+            })
+            .then(data => {
+              console.log('API response:', data);
+              
+              if (data && data.agents && Array.isArray(data.agents)) {
+                console.log(`Found ${data.agents.length} agents matching the query`);
+                renderResults('users', data.agents);
+                resolve(data.agents);
+              } else {
+                console.warn('Response contained no agents array:', data);
+                // Check if data is in a different format
+                if (data && Array.isArray(data)) {
+                  console.log('Data appears to be an array directly, using as agents');
+                  renderResults('users', data);
+                  resolve(data);
+                } else {
+                  renderResults('users', []);
+                  resolve([]);
+                }
+              }
+            })
+            .catch(error => {
+              // Skip rendering if the request was aborted
+              if (error.name === 'AbortError') {
+                console.log('Request was aborted');
+                return resolve([]);
+              }
+              
+              console.error('API request failed:', error);
+              
+              let errorMessage = 'API request failed';
+              if (error.status) {
+                errorMessage += ` (Status: ${error.status})`;
+              }
+              if (error.message) {
+                errorMessage += `: ${error.message}`;
+              }
+              
+              showError(errorMessage);
+              renderResults('users', []);
+              resolve([]);
+            })
+            .finally(function() {
+              toggleSpinner(false);
             });
-            
-            // Find the configuration prompt
-            const promptElement = container.querySelector('.alert.alert-warning');
-            if (promptElement) {
-              container.insertBefore(errorMsg, promptElement.nextSibling);
-            } else {
-              container.insertBefore(errorMsg, container.firstChild);
+          
+          // Return the fetch promise for external control
+          return fetchPromise;
+        }
+      } catch (error) {
+        console.error('Error in search:', error);
+        showError(`Error making API request: ${error.message}`);
+        renderResults('users', []);
+        toggleSpinner(false);
+        return reject(error);
+      }
+    });
+  }
+  
+  // Search for requesters via Freshservice API
+  function searchRequesters(query) {
+    return new Promise((resolve, reject) => {
+      // Check if API URL and key are available
+      if (!app.apiUrl || !app.apiKey) {
+        console.error('API URL or API Key not configured');
+        showError('API configuration missing. Please check your settings.');
+        toggleSpinner(false);
+        return reject(new Error('API configuration missing'));
+      }
+      
+      // Show loading spinner
+      toggleSpinner(true);
+      
+      try {
+        // Build the query with proper encoding - include email in search fields
+        const queryString = `~[first_name|last_name|email]:'${query}'`;
+        const encodedQuery = encodeURIComponent(queryString);
+        const apiPath = `/api/v2/requesters?query="${encodedQuery}"`;
+        console.log('Request URL:', app.apiUrl + apiPath);
+        
+        // Use client.request instead of fetch
+        if (window.client && window.client.request) {
+          // Create an object to track if the request has been aborted
+          const abortInfo = { isAborted: false };
+          
+          // Create the request promise
+          const requestPromise = window.client.request.get(apiPath, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
             }
           })
-          .finally(() => {
-            // Reset the app configuration
-            app.apiUrl = origApiUrl;
-            app.apiKey = origApiKey;
+          .then(response => {
+            // Skip processing if the request was aborted
+            if (abortInfo.isAborted) {
+              console.log('Request was aborted');
+              return { requesters: [] };
+            }
             
-            // Reset button
-            testConnectionBtn.disabled = false;
-            testConnectionBtn.innerHTML = 'Test Connection';
+            // Parse the response JSON
+            const data = JSON.parse(response.response);
+            return data;
+          })
+          .then(data => {
+            console.log('API response:', data);
+            
+            if (data && data.requesters && Array.isArray(data.requesters)) {
+              console.log(`Found ${data.requesters.length} requesters matching the query`);
+              renderResults('requesters', data.requesters);
+              resolve(data.requesters);
+            } else {
+              console.warn('Response contained no requesters array:', data);
+              // Check if data is in a different format
+              if (data && Array.isArray(data)) {
+                console.log('Data appears to be an array directly, using as requesters');
+                renderResults('requesters', data);
+                resolve(data);
+              } else {
+                renderResults('requesters', []);
+                resolve([]);
+              }
+            }
+          })
+          .catch(error => {
+            // Skip rendering if the request was aborted
+            if (abortInfo.isAborted) {
+              console.log('Request was aborted');
+              return resolve([]);
+            }
+            
+            console.error('API request failed:', error);
+            
+            let errorMessage = 'API request failed';
+            if (error.status) {
+              errorMessage += ` (Status: ${error.status})`;
+            }
+            if (error.message) {
+              errorMessage += `: ${error.message}`;
+            }
+            
+            showError(errorMessage);
+            renderResults('requesters', []);
+            resolve([]);
+          })
+          .finally(function() {
+            toggleSpinner(false);
           });
-      } else {
-        // Show error for missing fields
-        const errorMsg = document.createElement('div');
-        errorMsg.className = 'alert alert-danger mt-2';
-        errorMsg.innerHTML = 'Please enter both domain and API key to test connection';
-        
-        // Remove any existing error messages
-        const existingErrors = container.querySelectorAll('.alert-danger');
-        existingErrors.forEach(el => {
-          if (el.textContent.includes('Please enter both')) {
-            el.remove();
-          }
-        });
-        
-        // Find the configuration prompt
-        const promptElement = container.querySelector('.alert.alert-warning');
-        if (promptElement) {
-          container.insertBefore(errorMsg, promptElement.nextSibling);
+          
+          // Add an abort method to the promise
+          requestPromise.abort = () => {
+            abortInfo.isAborted = true;
+            // Note: client.request doesn't support aborting directly, 
+            // but we can prevent the handlers from processing the response
+          };
+          
+          return requestPromise;
         } else {
-          container.insertBefore(errorMsg, container.firstChild);
+          // Fallback to fetch if client.request is not available
+          const authToken = btoa(app.apiKey + ':X');
+          console.log('Auth token created (first 10 chars):', authToken.substring(0, 10) + '...');
+          
+          const apiUrl = `${app.apiUrl}${apiPath}`;
+          
+          // Create an AbortController to handle request cancellation
+          const controller = new AbortController();
+          const signal = controller.signal;
+          
+          // Attach the abort controller to the promise for external cancellation
+          const fetchPromise = fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + authToken,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            signal: signal
+          });
+          
+          // Add abort method to the promise
+          fetchPromise.abort = () => controller.abort();
+          
+          // Return the fetch promise
+          fetchPromise
+            .then(response => {
+              if (!response.ok) {
+                const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
+                error.status = response.status;
+                throw error;
+              }
+              return response.json();
+            })
+            .then(data => {
+              console.log('API response:', data);
+              
+              if (data && data.requesters && Array.isArray(data.requesters)) {
+                console.log(`Found ${data.requesters.length} requesters matching the query`);
+                renderResults('requesters', data.requesters);
+                resolve(data.requesters);
+              } else {
+                console.warn('Response contained no requesters array:', data);
+                // Check if data is in a different format
+                if (data && Array.isArray(data)) {
+                  console.log('Data appears to be an array directly, using as requesters');
+                  renderResults('requesters', data);
+                  resolve(data);
+                } else {
+                  renderResults('requesters', []);
+                  resolve([]);
+                }
+              }
+            })
+            .catch(error => {
+              // Skip rendering if the request was aborted
+              if (error.name === 'AbortError') {
+                console.log('Request was aborted');
+                return resolve([]);
+              }
+              
+              console.error('API request failed:', error);
+              
+              let errorMessage = 'API request failed';
+              if (error.status) {
+                errorMessage += ` (Status: ${error.status})`;
+              }
+              if (error.message) {
+                errorMessage += `: ${error.message}`;
+              }
+              
+              showError(errorMessage);
+              renderResults('requesters', []);
+              resolve([]);
+            })
+            .finally(function() {
+              toggleSpinner(false);
+            });
+          
+          // Return the fetch promise for external control
+          return fetchPromise;
         }
+      } catch (error) {
+        console.error('Error in search:', error);
+        showError(`Error making API request: ${error.message}`);
+        renderResults('requesters', []);
+        toggleSpinner(false);
+        return reject(error);
       }
-    }
-  }
-  
-  // Handler for save config button
-  function saveConfigHandler() {
-    const container = document.querySelector('.container');
-    const apiUrlInput = document.getElementById('configApiUrl');
-    const apiKeyInput = document.getElementById('configApiKey');
-  
-    if (apiUrlInput && apiKeyInput) {
-      const apiUrl = apiUrlInput.value.trim();
-      const apiKey = apiKeyInput.value.trim();
-      
-      if (apiUrl && apiKey) {
-        // Process API URL to ensure it has proper format
-        let fullApiUrl = apiUrl;
-        if (!fullApiUrl.startsWith('http://') && !fullApiUrl.startsWith('https://')) {
-          fullApiUrl = 'https://' + fullApiUrl;
-        }
-        
-        // Update app configuration
-        app.apiUrl = fullApiUrl;
-        app.apiKey = apiKey;
-        
-        // Set up API endpoints
-        app.endpoints = {
-          users: `${app.apiUrl}/api/v2/agents`,
-          requesters: `${app.apiUrl}/api/v2/requesters`,
-          groups: `${app.apiUrl}/api/v2/groups`
-        };
-        
-        // Save to storage
-        saveConfigToStorage(client, {
-          apiUrl: app.apiUrl,
-          apiKey: app.apiKey,
-          appTitle: app.appTitle,
-          changeTypes: app.changeTypes
-        });
-        
-        // Show success message
-        const successMsg = document.createElement('div');
-        successMsg.className = 'alert alert-success';
-        successMsg.innerHTML = 'Configuration saved successfully. Reloading...';
-        container.insertBefore(successMsg, container.firstChild);
-        
-        // Reload the page after a short delay
-        setTimeout(function() {
-          location.reload();
-        }, 1500);
-      } else {
-        // Show error for missing fields
-        const errorMsg = document.createElement('div');
-        errorMsg.className = 'alert alert-danger mt-2';
-        errorMsg.innerHTML = 'Please enter both domain and API key';
-        
-        // Remove any existing error messages
-        const existingErrors = container.querySelectorAll('.alert-danger');
-        existingErrors.forEach(el => {
-          if (el.textContent.includes('Please enter both')) {
-            el.remove();
-          }
-        });
-        
-        // Find the configuration prompt
-        const promptElement = container.querySelector('.alert.alert-warning');
-        if (promptElement) {
-          container.insertBefore(errorMsg, promptElement.nextSibling);
-        } else {
-          container.insertBefore(errorMsg, container.firstChild);
-        }
-      }
-    }
-  }
-  
-  // Function to test API credentials
-  function testApiCredentials() {
-    return new Promise((resolve, reject) => {
-      if (!app.apiUrl || !app.apiKey) {
-        reject(new Error('API URL or API Key not provided'));
-        return;
-      }
-      
-      // Create URL for testing
-      const testUrl = `${app.apiUrl}/api/v2/agents?per_page=1`;
-      
-      // Create Basic Auth token
-      const authToken = btoa(app.apiKey + ':X');
-      
-      // Use fetch to make the request
-      fetch(testUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Basic ' + authToken,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        resolve(data);
-      })
-      .catch(error => {
-        reject(error);
-      });
     });
   }
   
-  // ... existing code ...
+  // Integration with change-form.js
+  function integrateWithChangeForm() {
+    console.log('Setting up integration with change-form.js');
+    
+    // Export our search functions to the app object for change-form.js to access
+    if (!window.app) {
+      window.app = {};
+    }
+    
+    // Make the searchUsers and searchRequesters functions available on the app object
+    window.app.searchUsers = searchUsers;
+    window.app.searchRequesters = searchRequesters;
+    
+    // Also make our local render function available if needed
+    window.app.renderResults = renderResults;
+  }
 })();
-
-// Perform search based on input
-function performSearch() {
-  console.log('Performing search...');
-  const searchInput = document.getElementById('searchInput');
-  
-  if (!searchInput) {
-    console.error('Search input element not found');
-    return;
-  }
-  
-  const searchTerm = searchInput.value.trim();
-  
-  if (!searchTerm) {
-    console.error('Please enter a search term');
-    return;
-  }
-  
-  // Show loading spinner
-  toggleSpinner(true);
-  
-  // Get active tab
-  const activeTab = document.querySelector('.nav-link.active');
-  if (!activeTab) {
-    console.error('No active tab found');
-    toggleSpinner(false);
-    return;
-  }
-  
-  const searchType = activeTab.id === 'users-tab' ? 'users' : 'requesters';
-  
-  // Clear previous results
-  const resultsContainer = document.getElementById(`${searchType}Results`);
-  if (resultsContainer) {
-    resultsContainer.innerHTML = '';
-  }
-  
-  // Perform search based on active tab
-  if (searchType === 'users') {
-    searchUsers(searchTerm)
-      .then(() => toggleSpinner(false))
-      .catch(error => {
-        console.error('Error during user search:', error);
-        toggleSpinner(false);
-      });
-  } else {
-    searchRequesters(searchTerm)
-      .then(() => toggleSpinner(false))
-      .catch(error => {
-        console.error('Error during requester search:', error);
-        toggleSpinner(false);
-      });
-  }
-}
-
-// Search for users via Freshservice API
-function searchUsers(query) {
-  console.log('Searching users with query:', query);
-  
-  return new Promise((resolve, reject) => {
-    // Check if API URL and key are available
-    if (!app.apiUrl || !app.apiKey) {
-      console.error('API configuration is missing. Please check app installation parameters.');
-      resolve([]);
-      return;
-    }
-    
-    // Make sure we have a client
-    if (!window.client || !window.client.request) {
-      console.error('Client request not available');
-      resolve([]);
-      return;
-    }
-    
-    const options = {
-      headers: {
-        'Authorization': 'Basic ' + btoa(app.apiKey + ':X'),
-        'Content-Type': 'application/json'
-      }
-    };
-    
-    // Make the API request using client.request instead of fetch
-    client.request.get(`${app.apiUrl}/api/v2/agents?query="name:'${query}' OR email:'${query}'"`, options)
-      .then(response => {
-        if (response && response.response) {
-          const data = JSON.parse(response.response);
-          console.log('Agent search results:', data);
-          resolve(data.agents || []);
-        } else {
-          console.error('Invalid response format from API');
-          resolve([]);
-        }
-      })
-      .catch(error => {
-        console.error('Error searching users:', error);
-        reject(error);
-      });
-  });
-}
-
-// Search for requesters via Freshservice API
-function searchRequesters(query) {
-  console.log('Searching requesters with query:', query);
-  
-  return new Promise((resolve, reject) => {
-    // Check if API URL and key are available
-    if (!app.apiUrl || !app.apiKey) {
-      console.error('API configuration is missing. Please check app installation parameters.');
-      resolve([]);
-      return;
-    }
-    
-    // Make sure we have a client
-    if (!window.client || !window.client.request) {
-      console.error('Client request not available');
-      resolve([]);
-      return;
-    }
-    
-    const options = {
-      headers: {
-        'Authorization': 'Basic ' + btoa(app.apiKey + ':X'),
-        'Content-Type': 'application/json'
-      }
-    };
-    
-    // Make the API request using client.request instead of fetch
-    client.request.get(`${app.apiUrl}/api/v2/requesters?query="name:'${query}' OR email:'${query}'"`, options)
-      .then(response => {
-        if (response && response.response) {
-          const data = JSON.parse(response.response);
-          console.log('Requester search results:', data);
-          resolve(data.requesters || []);
-        } else {
-          console.error('Invalid response format from API');
-          resolve([]);
-        }
-      })
-      .catch(error => {
-        console.error('Error searching requesters:', error);
-        reject(error);
-      });
-  });
-}
-
-// Function to integrate with change form
-function integrateWithChangeForm() {
-  console.log('Integrating with change form...');
-  
-  // If we're in a change form context, initialize the necessary components
-  const changeForm = document.getElementById('changeForm');
-  
-  if (changeForm) {
-    console.log('Change form found, setting up integration');
-    
-    // Make sure the app is accessible to change-form.js
-    window.app = window.app || {};
-    
-    // Ensure app functions are available even if the main init hasn't run yet
-    if (!window.app.searchUsers) {
-      window.app.searchUsers = searchUsers;
-    }
-    
-    if (!window.app.searchRequesters) {
-      window.app.searchRequesters = searchRequesters;
-    }
-    
-    // Add event listener for form submission
-    changeForm.addEventListener('submit', function(e) {
-      e.preventDefault();
-      console.log('Change form submitted, processing...');
-      
-      // Handle form submission logic
-      if (typeof submitChangeRequest === 'function') {
-        submitChangeRequest();
-      } else {
-        console.error('submitChangeRequest function not available');
-      }
-    });
-  } else {
-    console.log('Change form not found on this page');
-  }
-}
